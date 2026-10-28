@@ -11,8 +11,16 @@ import java.nio.charset.StandardCharsets
 /** 逐字歌词里的一个字 / 词 */
 class LyricWord(val startMs: Long, val durMs: Long, val text: String)
 
-/** @param words 网易云逐字歌词（yrc）里这一句的每个字 / 词的时间；普通 LRC 歌词为 null */
-class LyricLine(val timeMs: Long, val text: String, val words: List<LyricWord>? = null)
+/** @param words 网易云逐字歌词（yrc）里这一句的每个字 / 词的时间；普通 LRC 歌词为 null
+ *  @param endMs 行结束时间；null 表示未知（沿用旧行为：由下一行开始推断）。Salt 歌词提供真实结束时间
+ *  @param timesValid 该行时间是否可信；false 的行不用于同步定位（Salt 协议 5.4） */
+class LyricLine(
+    val timeMs: Long,
+    val text: String,
+    val words: List<LyricWord>? = null,
+    val endMs: Long? = null,
+    val timesValid: Boolean = true,
+)
 
 class Lyrics(rawLines: List<LyricLine>, val sourceName: String) {
     /** 去掉"纯音乐，请欣赏"这类提示（网易云给没歌词的歌塞的一句话） */
@@ -33,19 +41,18 @@ class Lyrics(rawLines: List<LyricLine>, val sourceName: String) {
     /** 当前用的歌词行：开了 Split lines 就是拆开后的 */
     val lines: List<LyricLine> get() = if (LyricSplit.enabled) split else raw
 
-    /** 最后一句开始时间 <= pos 的下标，没有则 -1 */
+    /** 有没有可用于同步定位的行（整首 timesValid=false 时无法跟唱） */
+    val hasSyncableTimes: Boolean get() = lines.any { it.timesValid }
+
+    /**
+     * 最后一句「时间可信」且开始时间 <= pos 的下标，没有则 -1。
+     * timesValid=false 的行只用于展示顺序，不参与同步定位（Salt 协议 5.4）。
+     */
     fun indexAt(pos: Long): Int {
-        var lo = 0
-        var hi = lines.size - 1
         var ans = -1
-        while (lo <= hi) {
-            val mid = (lo + hi) ushr 1
-            if (lines[mid].timeMs <= pos) {
-                ans = mid
-                lo = mid + 1
-            } else {
-                hi = mid - 1
-            }
+        for ((i, line) in lines.withIndex()) {
+            if (!line.timesValid) continue
+            if (line.timeMs <= pos) ans = i else break
         }
         return ans
     }
@@ -153,14 +160,16 @@ object LyricSplit {
             ok.forEach { it.text = it.words!!.joinToString("") { w -> w.text }.trim() }
             return if (ok.size <= 1) emptyList() else ok
         }
-        // 普通 LRC：只有整行开始时间，按字数比例估每段的开始时间
+        // 普通 LRC：只有整行开始时间，按字数比例估每段的开始时间。
+        // 有真实行结束（endMs，如 Salt 歌词）时用它作边界，不用下一行开始推断，避免污染真实时间轴。
         val text = line.text
         val starts = cuts(text)
         if (starts.size <= 1) return emptyList()
         val parts = starts.mapIndexed { i, st -> text.substring(st, starts.getOrNull(i + 1) ?: text.length).trim() }
         val counts = parts.map { p -> p.count { !it.isWhitespace() } }
         val total = counts.sum().coerceAtLeast(1)
-        val dur = ((nextMs ?: (line.timeMs + total * 300L)) - line.timeMs).coerceAtLeast(0L)
+        val lineEnd = line.endMs ?: nextMs ?: (line.timeMs + total * 300L)
+        val dur = (lineEnd - line.timeMs).coerceAtLeast(0L)
         val singing = dur * 0.85                     // 下一句前通常有一点空白
         var before = 0
         return parts.mapIndexed { i, p ->

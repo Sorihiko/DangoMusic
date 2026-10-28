@@ -44,5 +44,9 @@ subprojects {
         // 游戏本身带了这两个库（1.8.9 起每个版本都有），不打进 jar
         "compileOnly"("com.google.code.gson:gson:2.2.4")
         "compileOnly"("org.apache.logging.log4j:log4j-api:2.0-beta9")
+        // compileOnly 依赖需要补入测试运行时。
+        "testImplementation"("junit:junit:4.13.2")
+        "testImplementation"("com.google.code.gson:gson:2.2.4")
+        "testImplementation"("org.apache.logging.log4j:log4j-api:2.0-beta9")
     }
 }
