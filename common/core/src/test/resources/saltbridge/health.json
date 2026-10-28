@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "protocolVersion": "1.0",
+  "authRequired": true,
+  "instanceId": "inst-sample-0001",
+  "pluginVersion": "0.1.0",
+  "hostVersion": "1.19.2",
+  "servedAtMs": 1793183432000
+}

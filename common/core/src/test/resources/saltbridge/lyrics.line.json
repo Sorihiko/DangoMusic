@@ -1,0 +1,43 @@
+{
+  "instanceId": "inst-sample-0001",
+  "servedAtMs": 1793183432000,
+  "generation": 3,
+  "version": 8,
+  "status": "available",
+  "association": "associated",
+  "lineCount": 3,
+  "staleSinceMs": null,
+  "staleUntilMs": null,
+  "timesBase": "trackStart",
+  "timingSanity": "ok",
+  "lines": [
+    {
+      "startMs": 22000,
+      "endMs": 27500,
+      "text": "风从山谷的另一端吹来",
+      "translation": "Sample line one",
+      "timing": "line",
+      "timesValid": true,
+      "cells": []
+    },
+    {
+      "startMs": 28500,
+      "endMs": 34000,
+      "text": "云在晴空里慢慢排成行",
+      "translation": "Sample line two",
+      "timing": "line",
+      "timesValid": true,
+      "cells": []
+    },
+    {
+      "startMs": 35500,
+      "endMs": 40500,
+      "text": "我们把脚步放得很轻",
+      "translation": "Sample line three",
+      "timing": "line",
+      "timesValid": true,
+      "cells": []
+    }
+  ],
+  "assumptions": []
+}

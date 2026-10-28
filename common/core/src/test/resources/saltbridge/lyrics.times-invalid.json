@@ -1,0 +1,37 @@
+{
+  "instanceId": "inst-sample-0001",
+  "servedAtMs": 1793183432000,
+  "generation": 3,
+  "version": 9,
+  "status": "available",
+  "association": "unconfirmed",
+  "lineCount": 2,
+  "staleSinceMs": null,
+  "staleUntilMs": null,
+  "timesBase": "trackStart",
+  "timingSanity": "suspect",
+  "lines": [
+    {
+      "startMs": 22000,
+      "endMs": 21000,
+      "text": "行结束早于开始时间不可信",
+      "translation": null,
+      "timing": "line",
+      "timesValid": false,
+      "cells": []
+    },
+    {
+      "startMs": 15000,
+      "endMs": 20000,
+      "text": "开始时间倒退的行也不可信",
+      "translation": null,
+      "timing": "word",
+      "timesValid": false,
+      "cells": [
+        { "startMs": 15000, "endMs": 17500, "text": "开始时间" },
+        { "startMs": 17500, "endMs": 20000, "text": "倒退的行也不可信" }
+      ]
+    }
+  ],
+  "assumptions": []
+}
