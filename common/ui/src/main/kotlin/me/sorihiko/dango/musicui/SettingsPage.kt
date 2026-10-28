@@ -30,7 +30,7 @@ import kotlin.math.roundToInt
 internal class SettingsPage(private val screen: MusicScreen, private val module: NeteaseMusicModule) {
     private val ui = screen.ui
 
-    private enum class Ctl { TOGGLE, SLIDER, SWATCH, KEY, LANGUAGE }
+    private enum class Ctl { TOGGLE, SLIDER, SWATCH, KEY, LANGUAGE, TOKEN, STATUS }
 
     /** scale：显示值 = 实际值 × scale（百分比的选项是 100），手动输入时按显示值换算回去 */
     private class Row(
@@ -227,12 +227,28 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
         player.left.remove("shuffle")   // 随机播放用播放栏上的按钮就够了，设置页不再显示（状态照样保存）
         player.left.remove("repeatOne") // 单曲循环同样通过播放栏控制
         player.left.remove("musicSource") // 音源通过侧栏切换。
+        player.left.remove("saltMode")  // Salt 接入单独一组（含令牌与状态）
+        player.left.remove("saltPort")
         val card = Src(mm.get(SongCardModule::class.java), fmts = mapOf("posX" to ::percent, "posY" to ::percent))
         val island = Src(mm.get(DynamicIslandModule::class.java), fmts = mapOf("notifyTime" to { v: Any -> "%.1f s".format((v as FloatValue).value) }))
         // 先取走，免得落进下面的 Hotkeys 组
         val updates = player.take(listOf("checkUpdates"))
+        // Salt Player 接入：模式 / 端口 / 令牌 / 状态
+        val saltRows = listOf(
+            Row(
+                "Enable Salt Player", "Add Salt Player to the source menu (needs the SaltBridge plugin)",
+                module.saltMode, Ctl.TOGGLE, null, ::fmtValue,
+            ),
+            Row(
+                "Bridge port", "Local port of the SaltBridge plugin · default 8737",
+                module.saltPort, Ctl.SLIDER, null, ::fmtValue,
+            ),
+            Row("Access token", "Auto-discovered from SaltBridge · or paste manually", module, Ctl.TOKEN, null, ::fmtValue),
+            Row("Connection", "SaltBridge link status", module, Ctl.STATUS, null, ::fmtValue),
+        )
         val music = listOf(
             Group("Player", "Playback", player.m, false, player.take(listOf("volume", "language"))),
+            Group("Salt Player", "Local player bridge", player.m, false, saltRows),
             Group("Hotkeys", "Click, then press a key · Backspace clears", player.m, false, player.take()),
             Group("Song card", "Overlay", card.m, true, card.take()),
             nowPlaying,
@@ -415,6 +431,8 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
             Ctl.SWATCH -> 16f * 4 + 8f * 3
             Ctl.KEY -> 130f
             Ctl.LANGUAGE -> 142f
+            Ctl.TOKEN -> 210f
+            Ctl.STATUS -> 210f
         }
         val textW = b.width - ctlW - 14f
         ui.text(ui.trim(I18n.text(r.label), textW, 12f, Theme.FONT_MEDIUM), b.x, b.y + 8f, 12f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
@@ -451,6 +469,8 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
                 }
             }
             Ctl.KEY -> drawKeyButton(r.value as IntValue, clip, cx, cy)
+            Ctl.TOKEN -> drawTokenRow(r.value as NeteaseMusicModule, clip, cx, cy)
+            Ctl.STATUS -> drawStatusRow(r.value as NeteaseMusicModule, clip, cx, cy)
             Ctl.LANGUAGE -> {
                 // 红色选中块用弹簧滑到另一个语言上
                 val v = r.value as IntValue
@@ -540,6 +560,47 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
         }
         keyResetButtons += resetHit
         ui.hits += resetHit
+    }
+
+    /** 令牌行：遮罩显示 + 粘贴 / 清除。令牌本身不画全、不进日志 */
+    private fun drawTokenRow(m: NeteaseMusicModule, clip: LayoutBounds, cx: Float, cy: Float) {
+        val masked = m.saltTokenMask().ifEmpty { "—" }
+        ui.text(ui.trim(masked, 62f, 11f, Theme.FONT_SEMIBOLD), cx, cy - 11f * 0.39f - 0.5f, 11f,
+            if (m.saltTokenMask() == "—") Theme.TEXT_TERTIARY else Theme.TEXT_PRIMARY, Theme.FONT_SEMIBOLD)
+
+        val paste = LayoutBounds(cx + 68f, cy - 12f, 66f, 24f)
+        ui.card(paste, if (ui.hover(paste)) Theme.CARD_HOVER else Theme.CARD, 7f)
+        val pl = I18n.text("Paste")
+        ui.text(pl, paste.x + (paste.width - ui.width(pl, 11f, Theme.FONT_MEDIUM)) / 2f,
+            cy - 11f * 0.39f - 0.5f, 11f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
+        ui.hits += paste.intersect(clip) to {
+            m.pasteSaltToken()
+        }
+
+        val clear = LayoutBounds(cx + 140f, cy - 12f, 66f, 24f)
+        ui.card(clear, if (ui.hover(clear)) Theme.CARD_HOVER else Theme.CARD, 7f)
+        val cl = I18n.text("Clear")
+        ui.text(cl, clear.x + (clear.width - ui.width(cl, 11f, Theme.FONT_MEDIUM)) / 2f,
+            cy - 11f * 0.39f - 0.5f, 11f, Theme.TEXT_SECONDARY, Theme.FONT_MEDIUM)
+        ui.hits += clear.intersect(clip) to {
+            m.clearSaltToken()
+        }
+    }
+
+    /** 连接状态行：动态文案 + 颜色 */
+    private fun drawStatusRow(m: NeteaseMusicModule, clip: LayoutBounds, cx: Float, cy: Float) {
+        val switching = m.saltSwitchNote.isNotEmpty()
+        val text = I18n.text(if (switching) m.saltSwitchNote else m.saltStatusText())
+        val color = when {
+            switching -> Color(1f, 0.72f, 0.30f, 1f)
+            m.saltConnection() == me.sorihiko.dango.playback.salt.SaltSessionSource.Connection.READY -> Color(0.42f, 0.86f, 0.52f, 1f)
+            m.saltConnection() == me.sorihiko.dango.playback.salt.SaltSessionSource.Connection.STOPPED -> Theme.TEXT_TERTIARY
+            m.saltConnection() == me.sorihiko.dango.playback.salt.SaltSessionSource.Connection.CONNECTING -> Theme.TEXT_SECONDARY
+            else -> Color(1f, 0.45f, 0.45f, 1f)
+        }
+        val shown = ui.trim(text, 206f, 11f, Theme.FONT_SEMIBOLD)
+        ui.text(shown, cx + 206f - ui.width(shown, 11f, Theme.FONT_SEMIBOLD), cy - 11f * 0.39f - 0.5f, 11f,
+            color, Theme.FONT_SEMIBOLD)
     }
 
     /** 重置优先于鼠标录制，避免点击重置时反而绑定成鼠标左键。 */

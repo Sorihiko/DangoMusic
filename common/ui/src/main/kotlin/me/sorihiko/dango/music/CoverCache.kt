@@ -6,14 +6,12 @@ import me.sorihiko.dango.gfx.Texture
 
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
-import java.io.ByteArrayInputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.LinkedBlockingDeque
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import javax.imageio.ImageIO
 import kotlin.math.min
 
 /**
@@ -89,12 +87,12 @@ object CoverCache {
     }
 
     /** 取封面；还没有就去下载，先返回 null（画占位） */
-    fun get(key: String, url: String): Texture? {
+    fun get(key: String, url: String, loadBytes: (() -> ByteArray?)? = null): Texture? {
         textures[key]?.let {
             lastUsed[key] = now
             return it
         }
-        if (url.isEmpty()) return null
+        if (url.isEmpty() && loadBytes == null) return null
         val failed = failedAt[key]
         if (failed != null && System.currentTimeMillis() - failed < RETRY_MS) return null
         if (!requested.add(key)) return null
@@ -110,11 +108,11 @@ object CoverCache {
                 // NetEase's resize parameter is not part of QQ/Kugou image URLs.
                 val imageHost = java.net.URI(url).host.orEmpty()
                 val full = if ("?" !in url && (imageHost.endsWith(".126.net") || imageHost.endsWith(".163.com"))) "$url?param=200y200" else url
-                val bytes = NeteaseApi.request(full, "image/jpeg,image/png,image/*;q=0.8")
+                val bytes = if (loadBytes != null) loadBytes() else NeteaseApi.request(full, "image/jpeg,image/png,image/*;q=0.8")
                 if (bytes == null) {
                     why = "download failed"
                 } else {
-                    val img = ImageIO.read(ByteArrayInputStream(bytes))
+                    val img = CoverImage.decode(bytes)
                     if (img == null) {
                         why = "unreadable image (${bytes.size} bytes)"
                     } else {

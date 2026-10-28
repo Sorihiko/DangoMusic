@@ -5,6 +5,7 @@ import me.sorihiko.dango.DangoMusic
 import me.sorihiko.dango.event.EventHandler
 import me.sorihiko.dango.events.WorldRenderEndEvent
 import me.sorihiko.dango.gfx.CjkStyle
+import me.sorihiko.dango.i18n.I18n
 import me.sorihiko.dango.lyrics.LyricLine
 import me.sorihiko.dango.lyrics.LyricSplit
 import me.sorihiko.dango.lyrics.Lyrics
@@ -19,11 +20,11 @@ import me.sorihiko.dango.module.values.IntValue
 import me.sorihiko.dango.module.values.ModuleValue
 import me.sorihiko.dango.music.CoverArt
 import me.sorihiko.dango.music.MusicPlayer
-import me.sorihiko.dango.music.NeteaseTrack
+import me.sorihiko.dango.playback.PlaybackSessions
+import me.sorihiko.dango.playback.SessionState
+import me.sorihiko.dango.playback.SessionTrack
 
 import java.util.Random
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import kotlin.math.abs
 import kotlin.math.asin
 import kotlin.math.atan
@@ -120,24 +121,20 @@ class LyricsModule : Module() {
 
     // ---------------------------------------------------------------- 状态
 
-    /** 正在播放的歌（来自内置播放器） */
-    private class NowPlaying(val track: NeteaseTrack, val playing: Boolean) {
+    /** 正在播放的歌（来自当前播放会话：内置或 Salt） */
+    private class NowPlaying(val track: SessionTrack, val playing: Boolean) {
         val key: String get() = track.key
-        val title: String get() = track.name
-        val artist: String get() = track.artists.joinToString(" / ")
+        val title: String get() = track.title
+        val artist: String get() = track.artistText
     }
 
     private val cover = CoverArt()
-    private val fetcher = Executors.newSingleThreadExecutor { r -> Thread(r, "Dango-Lyrics").apply { isDaemon = true } }
-
-    private object NotFound
-    private val cache = ConcurrentHashMap<String, Any>()     // key -> Lyrics 或 NotFound
-    private val pending = ConcurrentHashMap.newKeySet<String>()
 
     private var current: NowPlaying? = null
     private var currentKey: String? = null
     private var songPos = 0.0                 // 毫秒，本地平滑时钟
     private var lastSeenNanos = 0L
+    private var lastLyrics: Lyrics? = null
     private var lastIndex = -1
 
     private val random = Random()
@@ -189,30 +186,26 @@ class LyricsModule : Module() {
 
     // ---------------------------------------------------------------- 当前歌曲 / 时钟
 
+    /** 从当前播放会话读取（内置或 Salt 同一入口） */
     private fun nowPlaying(): NowPlaying? {
-        if (!MusicPlayer.active) return null
-        val t = MusicPlayer.current ?: return null
-        return NowPlaying(t, MusicPlayer.state == MusicPlayer.State.PLAYING)
-    }
-
-    private fun lyricsFor(key: String): Lyrics? = cache[key] as? Lyrics
-
-    private fun requestLyrics(s: NowPlaying) {
-        val key = s.key
-        if (cache.containsKey(key) || !pending.add(key)) return
-        val track = s.track
-        fetcher.execute {
-            try {
-                cache[key] = me.sorihiko.dango.music.MusicSources.api(track.source).lyrics(track) ?: NotFound
-            } catch (_: Exception) {
-                cache[key] = NotFound
-            } finally {
-                pending.remove(key)
-            }
+        val snap = PlaybackSessions.active().snapshot()
+        val t = snap.track ?: return null
+        // 有曲目且状态未结束/出错/停止时显示；UNKNOWN（Salt 刚启用）也显示
+        val active = when (snap.state) {
+            SessionState.LOADING, SessionState.PLAYING, SessionState.PAUSED, SessionState.UNKNOWN -> true
+            else -> false
         }
+        if (!active) return null
+        return NowPlaying(t, snap.state == SessionState.PLAYING)
     }
 
-    /** 跟着内置播放器的进度走（它的进度是精确的） */
+    private fun lyricsFor(): Lyrics? = PlaybackSessions.active().lyrics()
+
+    private fun requestLyrics() {
+        PlaybackSessions.active().requestLyrics()
+    }
+
+    /** 跟着播放会话的进度走（内置为精确值；Salt 为锚点外推的显示位置） */
     private fun updateClock() {
         val now = System.nanoTime()
         val s = nowPlaying()
@@ -228,17 +221,19 @@ class LyricsModule : Module() {
             return
         }
         lastSeenNanos = now
-        val p = MusicPlayer.positionMs.toDouble()
+        val p = PlaybackSessions.active().snapshot().positionMs.toDouble()
         if (s.key != currentKey) {
             currentKey = s.key
             songPos = p
             active?.let { startFade(it) }
             active = null
             lastIndex = -1
-            requestLyrics(s)
+            requestLyrics()
         } else {
-            if (abs(p - songPos) > 300) lastIndex = -1   // 拖了进度条
+            if (abs(p - songPos) > 300) lastIndex = -1   // 拖了进度条 / seek
             songPos = p
+            // 歌词可能晚到：没拿到就继续要（会话源内部幂等）
+            if (lyricsFor() == null) requestLyrics()
         }
         current = s
     }
@@ -249,7 +244,7 @@ class LyricsModule : Module() {
     fun renderMainMenu() {
         if (!DangoClient.platform.inMainMenu) return
         val s = nowPlaying() ?: return
-        s.track.coverUrl.takeIf { it.isNotEmpty() }?.let { cover.requestUrl(s.key, it) }
+        cover.requestTrack(s.track)
         DangoClient.gfx.guarded {
             cover.upload()
             drawNowPlaying(s, null)
@@ -263,7 +258,7 @@ class LyricsModule : Module() {
         val s = current
         // 小柱子的颜色取自封面，所以只开 Now playing 也要加载封面
         if (s != null && (showCover.get() || nowPlaying.get())) {
-            s.track.coverUrl.takeIf { it.isNotEmpty() }?.let { cover.requestUrl(s.key, it) }
+            cover.requestTrack(s.track)
         }
         cover.upload()
         // 拆句开关变了：歌词行的下标都变了，重新找当前这句
@@ -271,9 +266,22 @@ class LyricsModule : Module() {
             LyricSplit.enabled = splitLines.get()
             lastIndex = -1
         }
-        val lyrics = currentKey?.let { lyricsFor(it) }
+        val lyrics = lyricsFor()
+        if (lyrics !== lastLyrics) {
+            lastLyrics = lyrics
+            lastIndex = -1
+            active?.let { startFade(it) }
+            active = null
+        }
         val paused = s != null && !s.playing
-        if (s != null && lyrics != null) {
+        if (s != null && lyrics != null && !lyrics.hasSyncableTimes) {
+            // 整首没有可信行时间：提示一次，不用它做同步定位
+            if (lastIndex != -2) {
+                lastIndex = -2
+                active?.let { startFade(it) }
+                active = spawn(LyricLine(0L, I18n.text("Lyrics timing unavailable — cannot sync"), null), 5000L)
+            }
+        } else if (s != null && lyrics != null) {
             val pos = songPos.toLong()
             val idx = lyrics.indexAt(pos)
             if (paused) {

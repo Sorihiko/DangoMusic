@@ -6,6 +6,10 @@ import me.sorihiko.dango.module.impls.music.NeteaseMusicModule
 import me.sorihiko.dango.music.CoverCache
 import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.MusicScreen
+import me.sorihiko.dango.playback.PlaybackController
+import me.sorihiko.dango.playback.PlaybackMode
+import me.sorihiko.dango.playback.PlaybackSessions
+import me.sorihiko.dango.playback.PlaybackSnapshot
 import me.sorihiko.dango.ui.LayoutBounds
 import me.sorihiko.dango.ui.ShapeStyle
 import me.sorihiko.dango.ui.Theme
@@ -14,7 +18,11 @@ import me.sorihiko.dango.utils.Color
 import kotlin.math.max
 import kotlin.math.min
 
-/** 底部播放栏：左边当前歌曲，中间控制按钮 + 进度条，右边单曲循环 / 随机 + 音量 */
+/**
+ * 底部播放栏 = 控制面板：左边当前歌曲，中间控制按钮 + 进度条，右边模式相关操作。
+ * 内置模式：单曲循环 / 随机 + 音量（本地引擎参数）；
+ * Salt 模式：歌和引擎在 Salt Player，这里只显示连接状态并转发控制。
+ */
 internal class PlayerBar(private val screen: MusicScreen, private val module: NeteaseMusicModule) {
     private val ui = screen.ui
 
@@ -41,24 +49,30 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
     fun draw(bar: LayoutBounds) {
         val ctx = ui.ctx
         ui.card(bar, Theme.CARD, 16f)
-        val t = MusicPlayer.current
+        val salt = PlaybackSessions.mode == PlaybackMode.SALT
+        val snap: PlaybackSnapshot = PlaybackSessions.active().snapshot()
+        val t = snap.track
 
-        // 左：封面 + 歌名 / 歌手
+        // 左：封面 + 歌名 / 歌手（统一读当前播放会话）
         val cs = 48f
         val coverBox = LayoutBounds(bar.x + 13f, bar.y + (bar.height - cs) / 2f, cs, cs)
-        ui.drawCover(coverBox, t?.let { CoverCache.track(it) }, 8f)
+        val coverImg = if (salt) t?.let { CoverCache.get(it.key, "", it.coverBytes) }
+            else MusicPlayer.current?.let { CoverCache.track(it) }
+        ui.drawCover(coverBox, coverImg, 8f)
         val infoX = coverBox.right + 12f
         val infoW = 220f
-        val title = t?.name ?: I18n.text("Not playing")
+        val title = t?.title ?: I18n.text("Not playing")
         ui.text(ui.trim(title, infoW, 14f, Theme.FONT_SEMIBOLD), infoX, coverBox.y + 9f, 14f, Theme.TEXT_PRIMARY, Theme.FONT_SEMIBOLD)
         val sub = when {
+            salt && PlaybackSessions.salt.connectionNote.isNotEmpty() ->
+                I18n.text(module.saltStatusText())
             t == null -> "-"
-            MusicPlayer.message.isNotEmpty() -> I18n.message(MusicPlayer.message)
-            else -> t.artists.joinToString(" / ")
+            !salt && MusicPlayer.message.isNotEmpty() -> I18n.message(MusicPlayer.message)
+            else -> t.artistText
         }
         ui.text(ui.trim(sub, infoW, 11f), infoX, coverBox.y + 28f, 11f, Theme.TEXT_SECONDARY)
 
-        // 中：上一首 / 播放 / 下一首 / 队列。点击区域固定，动画只改画出来的样子
+        // 中：上一首 / 播放 / 下一首（+ 内置的队列）。控制经统一路由
         val cx = bar.x + bar.width / 2f
         val cy = bar.y + 25f
         val playB = LayoutBounds(cx - 17f, cy - 17f, 34f, 34f)
@@ -68,9 +82,8 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         val kPrev = button(prevB, prevA)
         val kPlay = button(playB, playA)
         val kNext = button(nextB, nextA)
-        val kQueue = button(queueB, queueA)
         // 播放 ↔ 暂停：两个图标交叉淡入淡出，暂停的两道竖条从中间长出来，三角形收小淡出
-        val p = playMorph.tick(if (MusicPlayer.state == MusicPlayer.State.PLAYING) 1f else 0f).coerceIn(0f, 1f)
+        val p = playMorph.tick(if (snap.playing) 1f else 0f).coerceIn(0f, 1f)
         if (p > 0.01f) {
             ctx.pushOpacity(p)
             val bh = 16f * kPlay * (0.55f + 0.45f * p)
@@ -90,19 +103,22 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         val nc = nextB.x + 14f
         ui.icon("▶", nc - 2.5f * kNext, cy, 12f * kNext, Theme.TEXT_PRIMARY)
         ui.card(LayoutBounds(nc + 3.8f * kNext, cy - 5.5f * kNext, 2.2f * kNext, 11f * kNext), Theme.TEXT_PRIMARY, 1f)
-        val q = queueA.on.tick(if (ScreenState.page == Page.QUEUE) 1f else 0f)
-        ui.icon("≡", queueB.x + 14f, cy, 14f * kQueue, mixColor(Theme.TEXT_PRIMARY, RED, q))
-        ui.hits += prevB to { prevA.press.v -= 7f; MusicPlayer.prev() }
-        ui.hits += playB to { playA.press.v -= 7f; MusicPlayer.togglePause() }
-        ui.hits += nextB to { nextA.press.v -= 7f; MusicPlayer.next() }
-        ui.hits += queueB to {
-            queueA.press.v -= 7f
-            if (ScreenState.page == Page.QUEUE) screen.goBackOrHome() else screen.go(Page.QUEUE)
+        ui.hits += prevB to { prevA.press.v -= 7f; PlaybackController.previous() }
+        ui.hits += playB to { playA.press.v -= 7f; PlaybackController.togglePause() }
+        ui.hits += nextB to { nextA.press.v -= 7f; PlaybackController.next() }
+        if (!salt) {
+            val kQueue = button(queueB, queueA)
+            val q = queueA.on.tick(if (ScreenState.page == Page.QUEUE) 1f else 0f)
+            ui.icon("≡", queueB.x + 14f, cy, 14f * kQueue, mixColor(Theme.TEXT_PRIMARY, RED, q))
+            ui.hits += queueB to {
+                queueA.press.v -= 7f
+                if (ScreenState.page == Page.QUEUE) screen.goBackOrHome() else screen.go(Page.QUEUE)
+            }
         }
 
         // 进度条：时间 | 条 | 时间
-        val dur = MusicPlayer.durationMs
-        val pos = MusicPlayer.positionMs
+        val dur = t?.durationMs ?: 0L
+        val pos = snap.positionMs
         val pw = min(440f, bar.width * 0.4f)
         progRect = LayoutBounds(cx - pw / 2f, bar.y + 54f, pw, 4f)
         val l = fmtTime(pos)
@@ -121,8 +137,17 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
             }
         }
 
-        // 右：单曲循环 / 随机 + 音量
+        // 右：内置 = 单曲循环 / 随机 + 音量；Salt = 连接状态（曲库和引擎在 Salt Player）
         val vy = bar.y + bar.height / 2f
+        if (salt) {
+            val st = I18n.text(module.saltStatusText())
+            ui.text(ui.trim(st, 220f, 11f, Theme.FONT_SEMIBOLD), bar.right - 24f - 220f, vy - 5f, 11f,
+                Theme.TEXT_SECONDARY, Theme.FONT_SEMIBOLD)
+            val hint = I18n.text("Songs & playback live in Salt Player")
+            ui.text(ui.trim(hint, 220f, 9.5f), bar.right - 24f - 220f, vy + 10f, 9.5f, Theme.TEXT_TERTIARY)
+            volRect = LayoutBounds()
+            return
+        }
         volRect = LayoutBounds(bar.right - 30f - 110f, vy - 2f, 110f, 4f)
         speaker(volRect.x - 22f, vy, false)
         speaker(volRect.right + 9f, vy, true)
@@ -175,11 +200,12 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
     /** 点在进度条 / 音量条上就处理掉，返回 true */
     fun mouseDown(mx: Int, my: Int): Boolean {
         if (progRect.expand(0f, 6f).contains(mx, my)) {
-            val dur = MusicPlayer.durationMs
-            if (dur > 0) MusicPlayer.seek(((mx - progRect.x) / progRect.width * dur).toLong())
+            val snap = PlaybackSessions.active().snapshot()
+            val dur = snap.track?.durationMs ?: 0L
+            if (dur > 0) PlaybackController.seekTo(((mx - progRect.x) / progRect.width * dur).toLong())
             return true
         }
-        if (volRect.expand(6f, 8f).contains(mx, my)) {
+        if (volRect.width > 0f && volRect.expand(6f, 8f).contains(mx, my)) {
             setVolumeAt(mx)
             return true
         }
@@ -188,7 +214,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
 
     /** 按住拖动音量 */
     fun mouseDrag(mx: Int, my: Int) {
-        if (volRect.expand(12f, 12f).contains(mx, my)) setVolumeAt(mx)
+        if (volRect.width > 0f && volRect.expand(12f, 12f).contains(mx, my)) setVolumeAt(mx)
     }
 
     private fun setVolumeAt(x: Int) {

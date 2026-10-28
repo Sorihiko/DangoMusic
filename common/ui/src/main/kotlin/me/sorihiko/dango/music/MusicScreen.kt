@@ -14,8 +14,11 @@ import me.sorihiko.dango.musicui.RED
 import me.sorihiko.dango.musicui.ScreenState
 import me.sorihiko.dango.musicui.SettingsPage
 import me.sorihiko.dango.musicui.Sidebar
+import me.sorihiko.dango.musicui.SaltPanel
 import me.sorihiko.dango.musicui.TracksPage
 import me.sorihiko.dango.musicui.Ui
+import me.sorihiko.dango.playback.PlaybackMode
+import me.sorihiko.dango.playback.PlaybackSessions
 import me.sorihiko.dango.platform.Keys
 import me.sorihiko.dango.ui.LayoutBounds
 import me.sorihiko.dango.ui.ShapeStyle
@@ -50,6 +53,7 @@ class MusicScreen(
     private val grid = GridPage(this)
     private val party = PartyPage(this)
     private val settings = SettingsPage(this, module)
+    private val saltPanel = SaltPanel(ui, module)
     private val bar = PlayerBar(this, module)
 
     private var openedAt = 0L
@@ -93,8 +97,19 @@ class MusicScreen(
 
     // ---------------------------------------------------------------- 导航
 
+    internal val saltAvailable: Boolean get() = module.saltMode.get()
+
+    internal fun selectSalt() {
+        if (!module.selectSalt()) {
+            if (module.saltSwitchNote.isNotEmpty()) Library.showStatus(module.saltSwitchNote)
+            return
+        }
+        sidebar.searchFocused = false
+        go(Page.HOME)
+    }
+
     internal fun selectSource(source: MusicSource) {
-        if (source == MusicSources.selected) return
+        if (source == MusicSources.selected && PlaybackSessions.mode == PlaybackMode.BUILT_IN) return
         module.selectSource(source)
         NativeAccounts.refreshProfile(source)
         sidebar.searchText = ""
@@ -295,10 +310,15 @@ class MusicScreen(
 
         when (s.page) {
             Page.HOME -> {
-                val rec = Library.recommend
-                val items = if (rec.isNullOrEmpty()) Library.playlists else rec
-                val label = if (rec.isNullOrEmpty()) I18n.text("Your playlists") else I18n.text("Recommended playlists")
-                grid.draw(body, I18n.text("Welcome to Dango Music!"), "$label · ${items.size}", items, Library.recommendLoading && items.isEmpty())
+                // Salt 模式：首页是控制面板（曲库和引擎都在 Salt Player）
+                if (PlaybackSessions.mode == PlaybackMode.SALT) {
+                    ui.itemAnim(0) { saltPanel.draw(body) }
+                } else {
+                    val rec = Library.recommend
+                    val items = if (rec.isNullOrEmpty()) Library.playlists else rec
+                    val label = if (rec.isNullOrEmpty()) I18n.text("Your playlists") else I18n.text("Recommended playlists")
+                    grid.draw(body, I18n.text("Welcome to Dango Music!"), "$label · ${items.size}", items, Library.recommendLoading && items.isEmpty())
+                }
             }
             Page.CHARTS -> {
                 val c = Library.charts ?: emptyList()
@@ -339,6 +359,7 @@ class MusicScreen(
         }
         if (mouseButton != 0) return
         if (bar.mouseDown(mx, my)) return
+        if (ScreenState.page == Page.HOME && PlaybackSessions.mode == PlaybackMode.SALT && saltPanel.mouseDown(mx, my)) return
         if (tracks.scrollbarDown(mx, my)) return
         val hit = ui.hits.firstOrNull { it.first.contains(mx, my) }
         settings.onClickElsewhere(hit)

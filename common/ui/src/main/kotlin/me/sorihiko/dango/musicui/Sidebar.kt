@@ -11,6 +11,8 @@ import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.NativeAccounts
 import me.sorihiko.dango.party.ListenParty
 import me.sorihiko.dango.platform.Keys
+import me.sorihiko.dango.playback.PlaybackMode
+import me.sorihiko.dango.playback.PlaybackSessions
 import me.sorihiko.dango.ui.LayoutBounds
 import me.sorihiko.dango.ui.Vec2
 import me.sorihiko.dango.ui.ShadowStyle
@@ -273,11 +275,12 @@ internal class Sidebar(private val screen: MusicScreen) {
         val ub = LayoutBounds(side.x + 6f, side.bottom - 46f, side.width - 12f, 40f)
         val av = LayoutBounds(ub.x + 6f, ub.y + 6f, 28f, 28f)
         val source = MusicSources.selected
+        val salt = PlaybackSessions.mode == PlaybackMode.SALT
         val native = source != MusicSource.NETEASE
         val account = if (native) NativeAccounts.get(source) else null
 
         // 右边的音源按钮：当前音源名 + ⇄；登记在整行前面，点它只开关菜单
-        val chipLabel = I18n.text(source.label)
+        val chipLabel = I18n.text(if (salt) "Salt Player" else source.label)
         val chipW = ui.width(chipLabel, 10f, Theme.FONT_MEDIUM) + 26f
         val chip = LayoutBounds(ub.right - chipW - 6f, ub.y + 9f, chipW, 22f)
         ui.card(chip, if (menuOpen || ui.hover(chip)) Theme.CARD_HOVER else Theme.CARD, 7f)
@@ -288,7 +291,11 @@ internal class Sidebar(private val screen: MusicScreen) {
         ui.hits += chip to { menuOpen = !menuOpen }
 
         val textW = chip.x - 8f - (av.right + 10f)
-        if (if (native) account != null else NeteaseApi.loggedIn) {
+        if (salt) {
+            ui.ctx.drawShape(av, ShapeStyle(Theme.TRACK, 14f))
+            ui.icon("♫", av.x + 14f, av.y + 14f, 12f, Theme.TEXT_SECONDARY)
+            ui.text(ui.trim(I18n.text("Local player"), textW, 12f), av.right + 10f, ub.y + 14f, 12f, Theme.TEXT_PRIMARY)
+        } else if (if (native) account != null else NeteaseApi.loggedIn) {
             val aurl = if (native) account!!.avatarUrl else NeteaseApi.avatarUrl
             val avatarKey = if (native) "u:${source.key}:${account!!.userId}:$aurl" else "u:${NeteaseApi.userId}"
             ui.drawCover(av, if (aurl.isNotEmpty()) CoverCache.get(avatarKey, aurl) else null, 14f)
@@ -310,9 +317,11 @@ internal class Sidebar(private val screen: MusicScreen) {
         }
     }
 
-    /** 音源菜单的上沿（菜单高度：三个音源 + 已登录时的分隔线和"退出登录"） */
+    /** 菜单高度随已启用的 Salt 入口和当前账号操作调整。 */
     private fun menuTop(side: LayoutBounds): Float {
-        val h = 8f + MusicSource.values().size * MENU_ITEM_H + (if (loggedIn(MusicSources.selected)) 9f + MENU_ITEM_H else 0f) + 8f
+        val count = MusicSource.values().size + if (screen.saltAvailable) 1 else 0
+        val canLogOut = PlaybackSessions.mode != PlaybackMode.SALT && loggedIn(MusicSources.selected)
+        val h = 8f + count * MENU_ITEM_H + (if (canLogOut) 9f + MENU_ITEM_H else 0f) + 8f
         return side.bottom - 46f - 6f - h
     }
 
@@ -356,9 +365,10 @@ internal class Sidebar(private val screen: MusicScreen) {
     private fun drawSourceMenu(side: LayoutBounds, menu: LayoutBounds) {
         val ctx = ui.ctx
         val current = MusicSources.selected
+        val salt = PlaybackSessions.mode == PlaybackMode.SALT
         val sources = MusicSource.values()
         val itemH = MENU_ITEM_H
-        val canLogOut = loggedIn(current)
+        val canLogOut = !salt && loggedIn(current)
         val full = LayoutBounds(side.x + 6f, menuTop(side), side.width - 12f, 0f)
         // 液态玻璃底：圆角、斜面和折射跟着当前大小走，小的时候也不会变形
         val r = kotlin.math.min(14f, menu.height / 2f)
@@ -381,7 +391,7 @@ internal class Sidebar(private val screen: MusicScreen) {
         }
         for (s in sources) {
             val (row, a) = rowAt(y)
-            val on = s == current
+            val on = !salt && s == current
             ctx.pushOpacity(a)
             if (on) ui.card(row, RED.copy(a = 0.20f), 8f) else if (interactive && ui.hover(row)) ui.card(row, Theme.CARD_HOVER, 8f)
             if (loggedIn(s)) ctx.drawShape(LayoutBounds(row.x + 10f, row.y + row.height / 2f - 3f, 6f, 6f), ShapeStyle(Theme.GREEN, 3f))
@@ -393,6 +403,24 @@ internal class Sidebar(private val screen: MusicScreen) {
                 hits += row to {
                     menuOpen = false
                     screen.selectSource(s)
+                }
+            }
+            y += itemH
+        }
+        if (screen.saltAvailable) {
+            val (row, a) = rowAt(y)
+            ctx.pushOpacity(a)
+            if (salt) ui.card(row, RED.copy(a = 0.20f), 8f)
+            else if (interactive && ui.hover(row)) ui.card(row, Theme.CARD_HOVER, 8f)
+            ui.text(I18n.text("Salt Player"), row.x + 24f, row.y + 9f, 12f,
+                if (salt) Theme.TEXT_PRIMARY else Theme.TEXT_SECONDARY,
+                if (salt) Theme.FONT_SEMIBOLD else Theme.FONT_MEDIUM)
+            ctx.popOpacity()
+            if (interactive) {
+                menuRects += row
+                hits += row to {
+                    menuOpen = false
+                    screen.selectSalt()
                 }
             }
             y += itemH

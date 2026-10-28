@@ -19,6 +19,11 @@ import me.sorihiko.dango.music.MusicSource
 import me.sorihiko.dango.platform.Keys
 import me.sorihiko.dango.platform.PlayerAction
 import me.sorihiko.dango.platform.PlayerKeyBinding
+import me.sorihiko.dango.playback.PlaybackController
+import me.sorihiko.dango.playback.PlaybackMode
+import me.sorihiko.dango.playback.PlaybackSessions
+import me.sorihiko.dango.playback.salt.SaltConfig
+import me.sorihiko.dango.playback.salt.SaltSessionSource
 import me.sorihiko.dango.update.UpdateChecker
 
 /**
@@ -33,8 +38,95 @@ class NeteaseMusicModule : Module() {
     private val musicSource = IntValue(0, 2, 0)
 
     fun selectSource(source: MusicSource) {
+        PlaybackSessions.switchMode(PlaybackMode.BUILT_IN)
+        saltSwitchNote = ""
         musicSource.setValue(source.ordinal)
         MusicSources.selected = source
+    }
+
+    // ---------------------------------------------------------------- Salt Player 接入（与曲库音源正交）
+
+    @ModuleValue("Enable Salt Player", "Add Salt Player to the source menu (needs the SaltBridge plugin)")
+    val saltMode = BooleanValue(false)
+
+    @ModuleValue("Bridge port", "Local port of the SaltBridge plugin")
+    val saltPort = IntValue(1024, 65535, SaltConfig.DEFAULT_PORT)
+
+    /** 设置页显示：连接状态（已本地化） */
+    fun saltStatusText(): String {
+        val s = PlaybackSessions.salt
+        val base = when (s.connection) {
+            SaltSessionSource.Connection.STOPPED -> if (saltMode.get()) I18n.text("Idle") else I18n.text("Off")
+            SaltSessionSource.Connection.CONNECTING -> I18n.text("Connecting…")
+            SaltSessionSource.Connection.READY -> I18n.text("Connected")
+            SaltSessionSource.Connection.NO_TOKEN -> I18n.text("Token not set")
+            SaltSessionSource.Connection.AUTH_FAILED -> I18n.text("Token rejected")
+            SaltSessionSource.Connection.FORBIDDEN -> I18n.text("Permission denied")
+            SaltSessionSource.Connection.NOT_RUNNING -> I18n.text("SaltBridge not reachable")
+            SaltSessionSource.Connection.PROTOCOL_MISMATCH -> I18n.text("Protocol mismatch")
+        }
+        return if (s.connectionNote.isEmpty()) base else "$base · ${s.connectionNote}"
+    }
+
+    /** 设置页据此着色 */
+    fun saltConnection(): SaltSessionSource.Connection = PlaybackSessions.salt.connection
+
+    /** 设置页显示：令牌遮罩 */
+    fun saltTokenMask(): String {
+        val t = SaltConfig.token()
+        return if (t.isEmpty()) "—" else SaltConfig.mask(t)
+    }
+
+    /** 粘贴令牌（剪贴板），返回是否成功 */
+    fun pasteSaltToken(): Boolean {
+        val raw = try {
+            DangoMusic.instance.platform.clipboard
+        } catch (_: Exception) {
+            return false
+        }
+        val clean = SaltConfig.sanitize(raw)
+        if (clean.isEmpty()) return false
+        SaltConfig.saveToken(clean)
+        if (PlaybackSessions.mode == PlaybackMode.SALT) PlaybackSessions.salt.restart()
+        return true
+    }
+
+    fun clearSaltToken() {
+        SaltConfig.clearToken()
+        if (PlaybackSessions.mode == PlaybackMode.SALT) PlaybackSessions.salt.restart()
+    }
+
+    /** 模式切换失败时的提示（如在房间里），显示后由设置页读取 */
+    @Volatile var saltSwitchNote: String = ""
+
+    /** 设置开关只控制入口是否可用；只有在音源菜单中选择才连接。 */
+    fun selectSalt(): Boolean {
+        if (!saltMode.get()) return false
+        SaltConfig.port = saltPort.value
+        return when (PlaybackSessions.switchMode(PlaybackMode.SALT)) {
+            PlaybackSessions.SwitchResult.OK -> {
+                saltSwitchNote = ""
+                true
+            }
+            PlaybackSessions.SwitchResult.IN_ROOM -> {
+                saltSwitchNote = "Leave Listen Together before switching to Salt Player"
+                false
+            }
+        }
+    }
+
+    /** 关闭接入时退出 Salt；启用接入不改变当前播放来源。 */
+    private fun syncSalt() {
+        val portChanged = SaltConfig.port != saltPort.value
+        SaltConfig.port = saltPort.value
+        if (!saltMode.get()) {
+            saltSwitchNote = ""
+            if (PlaybackSessions.mode == PlaybackMode.SALT) {
+                PlaybackSessions.switchMode(PlaybackMode.BUILT_IN)
+            }
+        } else if (portChanged && PlaybackSessions.mode == PlaybackMode.SALT) {
+            PlaybackSessions.salt.restart()
+        }
     }
 
     @ModuleValue("Volume", "Playback volume")
@@ -106,11 +198,13 @@ class NeteaseMusicModule : Module() {
 
     private val hotkeys: List<Pair<IntValue, () -> Unit>> by lazy {
         listOf(
-            keyPause to { MusicPlayer.togglePause() },
-            keyPrev to { MusicPlayer.prev() },
-            keyNext to { MusicPlayer.next() },
-            keyVolUp to { changeVolume(0.05f) },
-            keyVolDown to { changeVolume(-0.05f) },
+            // 播放控制按模式路由：内置驱动 MusicPlayer，Salt 发 /control（控制面板）
+            keyPause to { PlaybackController.togglePause() },
+            keyPrev to { PlaybackController.previous() },
+            keyNext to { PlaybackController.next() },
+            // 音量是本地引擎参数，Salt 模式下静默忽略（协议无音量控制）
+            keyVolUp to { if (PlaybackSessions.mode == PlaybackMode.BUILT_IN) changeVolume(0.05f) },
+            keyVolDown to { if (PlaybackSessions.mode == PlaybackMode.BUILT_IN) changeVolume(-0.05f) },
             keyLyrics to { lyrics()?.toggleLyrics() },
         )
     }
@@ -120,6 +214,10 @@ class NeteaseMusicModule : Module() {
     }
 
     override fun onDisable() {
+        // 关模块 = 回到内置并停掉 Salt 轮询
+        if (PlaybackSessions.mode != PlaybackMode.BUILT_IN) {
+            PlaybackSessions.switchMode(PlaybackMode.BUILT_IN)
+        }
         MusicPlayer.stop()
     }
 
@@ -166,12 +264,15 @@ class NeteaseMusicModule : Module() {
         DangoMusic.instance.platform.syncKeyBindings(keyBindings)
         UpdateChecker.tick(checkUpdates.get())
         if (!enabled) return
+        syncSalt()
         // 歌词模块一直开着（显示与否由 3D lyrics 控制）；等配置读回之后再检查
         if (++tickCount > 5) lyrics()?.let { if (!it.enabled) it.enabled = true }
-        MusicPlayer.volume = volume.value
-        MusicPlayer.shuffle = shuffle.get()
-
-        MusicPlayer.repeatOne = repeatOne.get()
+        // 内置播放参数只对内置模式有意义；随机/循环/音量不冒充 Salt 控制
+        if (PlaybackSessions.mode == PlaybackMode.BUILT_IN) {
+            MusicPlayer.volume = volume.value
+            MusicPlayer.shuffle = shuffle.get()
+            MusicPlayer.repeatOne = repeatOne.get()
+        }
 
         // 打开键额外支持主菜单；其他播放快捷键仍只在世界内响应。
         val platform = DangoMusic.instance.platform

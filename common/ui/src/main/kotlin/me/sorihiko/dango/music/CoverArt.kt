@@ -2,6 +2,7 @@ package me.sorihiko.dango.music
 
 import me.sorihiko.dango.DangoClient
 import me.sorihiko.dango.gfx.Texture
+import me.sorihiko.dango.playback.SessionTrack
 
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
@@ -20,9 +21,9 @@ class CoverArt {
 
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "Dango-Cover").apply { isDaemon = true } }
 
-    @Volatile private var pendingKey: String? = null
-    @Volatile private var pendingImage: BufferedImage? = null
-    private var requestedKey: String? = null
+    @Volatile private var pending: Pair<String, BufferedImage>? = null
+    @Volatile private var requestedKey: String? = null
+    private var retryAtNanos = 0L
 
     var location: Texture? = null
         private set
@@ -41,26 +42,36 @@ class CoverArt {
 
     /** 按封面地址加载（同一首歌只加载一次） */
     fun requestUrl(key: String, url: String) {
-        if (key == requestedKey) return
+        request(key) { download(if ("?" in url) url else "$url?param=300y300") }
+    }
+
+    fun requestTrack(track: SessionTrack) {
+        val loader = track.coverBytes
+        if (loader != null) request(track.key) { loader()?.let { CoverImage.decode(it) } }
+        else if (track.coverUrl.isNotEmpty()) requestUrl(track.key, track.coverUrl)
+    }
+
+    private fun request(key: String, load: () -> BufferedImage?) {
+        if (key == requestedKey && (shownKey == key || System.nanoTime() < retryAtNanos)) return
         requestedKey = key
+        retryAtNanos = System.nanoTime() + 8_000_000_000L
         worker.execute {
             val img = try {
-                download(if ("?" in url) url else "$url?param=300y300")?.let { squareResize(it) }
+                load()?.let { squareResize(it) }
             } catch (_: Exception) {
                 null
             }
             if (img != null && requestedKey == key) {
-                pendingImage = img
-                pendingKey = key
+                pending = key to img
             }
         }
     }
 
     /** 渲染线程：把后台准备好的图片上传成纹理 */
     fun upload() {
-        val img = pendingImage ?: return
-        val key = pendingKey
-        pendingImage = null
+        val (key, img) = pending ?: return
+        pending = null
+        if (key != requestedKey) return
         val textures = DangoClient.gfx.textures
         location?.let { textures.delete(it) }
         location = textures.upload("dango_cover", img)
@@ -130,7 +141,8 @@ class CoverArt {
         location = null
         shownKey = null
         requestedKey = null
-        pendingImage = null
+        pending = null
+        retryAtNanos = 0L
     }
 
     // ---------------------------------------------------------------- 工具
