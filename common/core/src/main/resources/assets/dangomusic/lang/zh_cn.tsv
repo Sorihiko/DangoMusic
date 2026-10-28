@@ -292,12 +292,9 @@ Enable Salt Player	启用 Salt Player 接入
 Add Salt Player to the source menu (needs the SaltBridge plugin)	在音源菜单中添加 Salt Player，选择后连接（需要 SaltBridge 插件）
 Local player	本机播放器
 Local player bridge	本机播放器接入
-Salt Player mode	Salt Player 模式
-Play through the Salt Player desktop app (needs the SaltBridge plugin)	通过桌面端 Salt Player 播放（需要 SaltBridge 插件）
 Bridge port	Bridge 端口
 Local port of the SaltBridge plugin · default 8737	SaltBridge 插件的本机端口 · 默认 8737
 Access token	访问令牌
-Paste from clipboard · shown masked, never logged	从剪贴板粘贴 · 遮罩显示、不进日志
 Connection	连接状态
 SaltBridge link status	SaltBridge 连接状态
 Paste	粘贴
@@ -318,5 +315,4 @@ Songs & playback live in Salt Player	歌曲与播放在 Salt Player 中
 This panel is just a remote control	本面板只是遥控器
 3D lyrics follow in the world automatically	3D 歌词在世界中自动跟随
 How it works	工作方式
-Songs & playback live in Salt Player · This panel is just a remote control	歌曲与播放在 Salt Player 中 · 本面板只是遥控器
 Auto-discovered from SaltBridge · or paste manually	自动从 SaltBridge 发现 · 也可手动粘贴

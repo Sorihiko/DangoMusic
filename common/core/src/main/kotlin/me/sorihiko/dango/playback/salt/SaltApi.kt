@@ -21,59 +21,38 @@ class SaltApi(
     private val tokenProvider: () -> String = { SaltConfig.token() },
 ) {
 
-    open class ApiException(val httpCode: Int, val apiCode: String, message: String) : IOException(message) {
+    open class ApiException(val apiCode: String, message: String) : IOException(message) {
         /** 令牌不对：提示重新配置 */
-        class Unauthorized : ApiException(401, "unauthorized", "token invalid")
+        class Unauthorized : ApiException("unauthorized", "token invalid")
         /** 无权限（如曲库读取被撤销） */
-        class Forbidden(apiCode: String) : ApiException(403, apiCode, "forbidden")
-        class NotFound(apiCode: String) : ApiException(404, apiCode, "not found")
+        class Forbidden(apiCode: String) : ApiException(apiCode, "forbidden")
+        class NotFound(apiCode: String) : ApiException(apiCode, "not found")
         /** 实例 / 代次不匹配：结果已过期 */
-        class Conflict(apiCode: String) : ApiException(409, apiCode, "conflict")
-        class BadRequest(apiCode: String) : ApiException(400, apiCode, "bad request")
-        class TooManyRequests(val retryAfterSec: Int) : ApiException(429, "rate_limited", "rate limited")
-        /** 网络不通 / 超时 / 连接拒绝等：可自动恢复 */
-        class Transport(cause: Throwable) : ApiException(-1, "transport", "transport error")
+        class Conflict(apiCode: String) : ApiException(apiCode, "conflict")
+        class BadRequest(apiCode: String) : ApiException(apiCode, "bad request")
+        class TooManyRequests : ApiException("rate_limited", "rate limited")
         /** 响应形状不对 */
-        class Malformed(detail: String) : ApiException(-2, "malformed", detail)
+        class Malformed(detail: String) : ApiException("malformed", detail)
     }
 
-    class Health(
-        val ok: Boolean,
-        val protocolVersion: String,
-        val instanceId: String,
-        val pluginVersion: String,
-        val hostVersion: String,
-        val servedAtMs: Long,
-    )
-
-    class Capabilities(
-        val positionStaleAfterMs: Long,
-        val inferredAnimationMaxMs: Long,
-        val requestsPerSecond: Int,
-    )
+    class Health(val ok: Boolean, val protocolVersion: String)
 
     /** /status 的聚合视图 */
     class Status(
         val instanceId: String,
-        val seq: Long,
         val servedAtMs: Long,
         val generation: Long,
         val trackStatus: String,
         val hasTrack: Boolean,
-        val trackId: String,
         val title: String,
         val artist: String,
-        val album: String,
         val durationMs: Long,
         val state: String,
-        val isPlaying: Boolean?,
         val reportedMs: Long?,
         val reportedAtMs: Long?,
         val animationMode: String,
-        val animationReason: String,
         val animationMaxMs: Long,
         val lyricsStatus: String,
-        val lyricsAssociation: String,
         val lyricsVersion: Long,
     )
 
@@ -84,7 +63,6 @@ class SaltApi(
         val version: Long,
         val status: String,
         val association: String,
-        val timingSanity: String?,
         val lines: List<Line>,
     ) {
         class Line(
@@ -102,20 +80,6 @@ class SaltApi(
         return Health(
             ok = bool(root, "ok", false),
             protocolVersion = str(root, "protocolVersion"),
-            instanceId = str(root, "instanceId"),
-            pluginVersion = str(root, "pluginVersion"),
-            hostVersion = str(root, "hostVersion"),
-            servedAtMs = long(root, "servedAtMs"),
-        )
-    }
-
-    fun capabilities(): Capabilities {
-        val root = get("capabilities", auth = true)
-        val limits = root.get("limits") as? JsonObject ?: JsonObject()
-        return Capabilities(
-            positionStaleAfterMs = long(limits, "positionStaleAfterMs", 3000L),
-            inferredAnimationMaxMs = long(limits, "inferredAnimationMaxMs", 1500L),
-            requestsPerSecond = int(limits, "requestsPerSecond", 50),
         )
     }
 
@@ -126,30 +90,21 @@ class SaltApi(
         val position = playback.get("position") as? JsonObject ?: JsonObject()
         val animation = playback.get("animation") as? JsonObject ?: JsonObject()
         val lyrics = root.get("lyrics") as? JsonObject ?: JsonObject()
-        val isPlaying = playback.get("isPlaying")?.let {
-            if (it.isJsonNull) null else try { it.asBoolean } catch (_: Exception) { null }
-        }
         return Status(
             instanceId = str(root, "instanceId"),
-            seq = long(root, "seq"),
             servedAtMs = long(root, "servedAtMs"),
             generation = long(root, "generation"),
             trackStatus = str(root, "trackStatus"),
             hasTrack = track != null,
-            trackId = track?.let { str(it, "id") } ?: "",
             title = track?.let { str(it, "title") } ?: "",
             artist = track?.let { str(it, "artist") } ?: "",
-            album = track?.let { str(it, "album") } ?: "",
             durationMs = track?.let { long(it, "durationMs") } ?: 0L,
             state = str(playback, "state"),
-            isPlaying = isPlaying,
             reportedMs = optLong(position, "reportedMs"),
             reportedAtMs = optLong(position, "reportedAtMs"),
             animationMode = str(animation, "mode"),
-            animationReason = str(animation, "reason"),
             animationMaxMs = long(animation, "maxMs"),
             lyricsStatus = str(lyrics, "status"),
-            lyricsAssociation = str(lyrics, "association"),
             lyricsVersion = long(lyrics, "version"),
         )
     }
@@ -189,7 +144,7 @@ class SaltApi(
                         retryMs = long(body, "retryAfterMs", 500L).coerceAtLeast(50L)
                     }
                     403, 404, 409 -> return null
-                    else -> throw mapError(code, conn, readBoundedQuiet(conn.errorStream, 16 * 1024))
+                    else -> throw mapError(code, readBoundedQuiet(conn.errorStream, 16 * 1024))
                 }
             } finally {
                 conn.disconnect()
@@ -199,8 +154,6 @@ class SaltApi(
         }
         return null
     }
-
-    class ControlResult(val accepted: Boolean, val requestId: String, val deduplicated: Boolean)
 
     /**
      * 播放控制。
@@ -213,19 +166,14 @@ class SaltApi(
         command: String,
         positionMs: Long? = null,
         expectedGeneration: Long? = null,
-    ): ControlResult {
+    ) {
         val body = JsonObject()
         body.addProperty("requestId", requestId)
         body.addProperty("expectedInstanceId", expectedInstanceId)
         body.addProperty("command", command)
         if (positionMs != null) body.addProperty("positionMs", positionMs)
         if (expectedGeneration != null) body.addProperty("expectedGeneration", expectedGeneration)
-        val root = post("control", body)
-        return ControlResult(
-            accepted = bool(root, "accepted", true),
-            requestId = str(root, "requestId"),
-            deduplicated = bool(root, "deduplicated", false),
-        )
+        post("control", body)
     }
 
     private fun post(path: String, body: JsonObject, maxBytes: Int = 64 * 1024): JsonObject {
@@ -257,7 +205,7 @@ class SaltApi(
                     throw ApiException.Malformed("response parse failed")
                 }
             }
-            throw mapError(code, conn, readBoundedQuiet(conn.errorStream, 16 * 1024))
+            throw mapError(code, readBoundedQuiet(conn.errorStream, 16 * 1024))
         } finally {
             conn.disconnect()
         }
@@ -276,40 +224,39 @@ class SaltApi(
                     if (cellArr != null && cellArr.isJsonArray) {
                         for (c in cellArr.asJsonArray) {
                             val co = c as? JsonObject ?: continue
-                            cells += LyricsBody.Cell(longOf(co, "startMs"), longOf(co, "endMs"), strOf(co, "text"))
+                            cells += LyricsBody.Cell(long(co, "startMs"), long(co, "endMs"), str(co, "text"))
                         }
                     }
                     lines += LyricsBody.Line(
-                        startMs = longOf(o, "startMs"),
-                        endMs = longOf(o, "endMs"),
-                        text = strOf(o, "text"),
-                        timesValid = boolOf(o, "timesValid", true),
+                        startMs = long(o, "startMs"),
+                        endMs = long(o, "endMs"),
+                        text = str(o, "text"),
+                        timesValid = bool(o, "timesValid", true),
                         cells = cells,
                     )
                 }
             }
             return LyricsBody(
-                instanceId = strOf(root, "instanceId"),
-                generation = longOf(root, "generation"),
-                version = longOf(root, "version"),
-                status = strOf(root, "status"),
-                association = strOf(root, "association"),
-                timingSanity = root.get("timingSanity")?.let { if (it.isJsonNull) null else it.asString },
+                instanceId = str(root, "instanceId"),
+                generation = long(root, "generation"),
+                version = long(root, "version"),
+                status = str(root, "status"),
+                association = str(root, "association"),
                 lines = lines,
             )
         }
 
-        internal fun strOf(o: JsonObject, key: String): String {
+        private fun str(o: JsonObject, key: String): String {
             val e = o.get(key) ?: return ""
             return if (e.isJsonNull || !e.isJsonPrimitive) "" else try { e.asString } catch (_: Exception) { "" }
         }
 
-        internal fun longOf(o: JsonObject, key: String, def: Long = 0L): Long {
+        private fun long(o: JsonObject, key: String, def: Long = 0L): Long {
             val e = o.get(key) ?: return def
             return if (e.isJsonNull) def else try { e.asLong } catch (_: Exception) { def }
         }
 
-        internal fun boolOf(o: JsonObject, key: String, def: Boolean): Boolean {
+        private fun bool(o: JsonObject, key: String, def: Boolean): Boolean {
             val e = o.get(key) ?: return def
             return if (e.isJsonNull) def else try { e.asBoolean } catch (_: Exception) { def }
         }
@@ -342,13 +289,13 @@ class SaltApi(
                     throw ApiException.Malformed("response parse failed")
                 }
             }
-            throw mapError(code, conn, readBoundedQuiet(conn.errorStream, 16 * 1024))
+            throw mapError(code, readBoundedQuiet(conn.errorStream, 16 * 1024))
         } finally {
             conn.disconnect()
         }
     }
 
-    private fun mapError(code: Int, conn: HttpURLConnection, errBody: ByteArray?): Exception {
+    private fun mapError(code: Int, errBody: ByteArray?): Exception {
         val apiCode = parseErrorCode(errBody) ?: when (code) {
             401 -> "unauthorized"
             403 -> "forbidden"
@@ -361,10 +308,7 @@ class SaltApi(
             403 -> ApiException.Forbidden(apiCode)
             404 -> ApiException.NotFound(apiCode)
             409 -> ApiException.Conflict(apiCode)
-            429 -> {
-                val retry = (conn.getHeaderField("Retry-After")?.toIntOrNull() ?: 1).coerceIn(1, 60)
-                ApiException.TooManyRequests(retry)
-            }
+            429 -> ApiException.TooManyRequests()
             else -> ApiException.Malformed("http $code $apiCode")
         }
     }
@@ -401,28 +345,9 @@ class SaltApi(
         null
     }
 
-    private fun str(o: JsonObject, key: String): String {
-        val e = o.get(key) ?: return ""
-        return if (e.isJsonNull || !e.isJsonPrimitive) "" else try { e.asString } catch (_: Exception) { "" }
-    }
-
-    private fun long(o: JsonObject, key: String, def: Long = 0L): Long {
-        val e = o.get(key) ?: return def
-        return if (e.isJsonNull) def else try { e.asLong } catch (_: Exception) { def }
-    }
-
     private fun optLong(o: JsonObject, key: String): Long? {
         val e = o.get(key) ?: return null
         return if (e.isJsonNull) null else try { e.asLong } catch (_: Exception) { null }
     }
 
-    private fun int(o: JsonObject, key: String, def: Int): Int {
-        val e = o.get(key) ?: return def
-        return if (e.isJsonNull) def else try { e.asInt } catch (_: Exception) { def }
-    }
-
-    private fun bool(o: JsonObject, key: String, def: Boolean): Boolean {
-        val e = o.get(key) ?: return def
-        return if (e.isJsonNull) def else try { e.asBoolean } catch (_: Exception) { def }
-    }
 }

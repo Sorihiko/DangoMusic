@@ -1,6 +1,5 @@
 package me.sorihiko.dango.playback.salt
 
-import com.google.gson.JsonParser
 import com.sun.net.httpserver.HttpServer
 import me.sorihiko.dango.playback.LyricsStatus
 import org.junit.Assert.*
@@ -10,8 +9,6 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SaltSessionSourceTest {
-    private fun fixture(name: String) = SaltTestData.json(name)
-
     private fun await(check: () -> Boolean) {
         val deadline = System.nanoTime() + 5_000_000_000L
         while (!check() && System.nanoTime() < deadline) Thread.sleep(10)
@@ -25,16 +22,19 @@ class SaltSessionSourceTest {
         server.createContext("/api/v1/") { exchange ->
             val path = exchange.requestURI.path.substringAfterLast('/')
             val json = when (path) {
-                "health" -> fixture("health.json")
-                "capabilities" -> fixture("capabilities.json")
-                "status" -> JsonParser().parse(fixture("status.playing.json")).asJsonObject.apply {
-                    getAsJsonObject("lyrics").addProperty("version", version.get())
-                    getAsJsonObject("lyrics").addProperty("status", if (unavailable.get()) "unavailable" else "available")
-                }.toString()
-                "lyrics" -> JsonParser().parse(fixture("lyrics.line.json")).asJsonObject.apply {
-                    addProperty("version", version.get())
-                    getAsJsonArray("lines")[0].asJsonObject.addProperty("text", "version-${version.get()}")
-                }.toString()
+                "health" -> """{"ok":true,"protocolVersion":"1.0"}"""
+                "status" -> """{
+                    "instanceId":"test","generation":1,"servedAtMs":100,"trackStatus":"available",
+                    "track":{"title":"Song","durationMs":10000},
+                    "playback":{"state":"playing","position":{"reportedMs":0,"reportedAtMs":100},
+                                "animation":{"mode":"confirmed","maxMs":3000}},
+                    "lyrics":{"version":${version.get()},"status":"${if (unavailable.get()) "unavailable" else "available"}"}
+                }"""
+                "lyrics" -> """{
+                    "instanceId":"test","generation":1,"version":${version.get()},
+                    "status":"available","association":"associated",
+                    "lines":[{"startMs":0,"endMs":10000,"text":"version-${version.get()}","timesValid":true}]
+                }"""
                 else -> "{}"
             }.toByteArray(Charsets.UTF_8)
             exchange.sendResponseHeaders(200, json.size.toLong())

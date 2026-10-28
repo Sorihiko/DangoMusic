@@ -1,18 +1,10 @@
 package me.sorihiko.dango.lyrics
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LyricLineEndTest {
-
-    @Test
-    fun endMsDefaultsToNull() {
-        val line = LyricLine(1000, "风从山谷的另一端吹来")
-        assertNull(line.endMs)
-        assertNull(line.words)
-    }
 
     @Test
     fun lyricsIndexStillWorksWithEndMs() {

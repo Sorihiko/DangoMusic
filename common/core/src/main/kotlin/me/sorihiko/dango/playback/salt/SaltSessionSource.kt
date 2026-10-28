@@ -129,7 +129,6 @@ class SaltSessionSource(
                     sleepCancellable(5000, myEpoch)
                     continue
                 }
-                api.capabilities()
                 synchronized(this) {
                     if (epoch.get() != myEpoch) return
                     connection = Connection.READY
@@ -173,7 +172,7 @@ class SaltSessionSource(
             is SaltApi.ApiException.TooManyRequests -> {
                 connectionNote = "rate limited"
             }
-            is SaltApi.ApiException.Transport, is java.net.SocketTimeoutException, is java.net.ConnectException -> {
+            is java.net.SocketTimeoutException, is java.net.ConnectException -> {
                 connection = Connection.NOT_RUNNING
                 connectionNote = "SaltBridge not reachable"
                 publishDisconnected()

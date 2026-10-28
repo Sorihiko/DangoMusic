@@ -40,11 +40,11 @@ object SaltConfig {
     }
 
     /** SaltBridge 配对文件路径（用户主目录，跨平台） */
-    fun pairingFile(): File =
+    private fun pairingFile(): File =
         File(System.getProperty("user.home") ?: "", ".saltbridge/token.txt")
 
     /** 自动发现 SaltBridge 写出的令牌；找不到返回空串 */
-    fun discoverToken(): String {
+    private fun discoverToken(): String {
         val f = pairingFile()
         return try {
             if (f.isFile) sanitize(String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8)) else ""
