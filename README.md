@@ -84,3 +84,11 @@
 第三方：[Inter](https://github.com/rsms/inter)（OFL 1.1）、[JLayer](https://central.sonatype.com/artifact/javazoom/jlayer/1.0.1)（LGPL）、[ZXing](https://github.com/zxing/zxing)（Apache 2.0）、Kotlin 标准库（Apache 2.0）。
 
 许可证：[GPL-3.0](LICENSE)
+
+## Salt Player 本机接入
+
+在设置中启用 Salt Player 接入后，从左下角音源菜单选择 Salt Player；启用开关不会自动替换当前音源，菜单中仍可切回网易云、QQ 或酷狗。
+
+需要 Windows 上运行 [SaltBridge](https://github.com/Luoning77/saltbridge)，默认端口为 8737。插件写出的本机配对文件可用于自动发现令牌；也可在 Mod 设置中手动粘贴。令牌保存在本机配置目录中，界面遮罩显示。
+
+支持当前歌曲、封面、播放进度、逐行/真实逐字歌词和播放控制。未连接时显示连接状态；Salt 音频由桌面播放器播放。一起听歌房间中需要先退出房间再选择 Salt。内置音量、随机和循环设置仅作用于内置播放器；本版本未接入本地曲库列表。
