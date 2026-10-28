@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SaltSessionSourceTest {
-    private fun fixture(name: String) = javaClass.getResourceAsStream("/saltbridge/$name")!!.bufferedReader().use { it.readText() }
+    private fun fixture(name: String) = SaltTestData.json(name)
 
     private fun await(check: () -> Boolean) {
         val deadline = System.nanoTime() + 5_000_000_000L

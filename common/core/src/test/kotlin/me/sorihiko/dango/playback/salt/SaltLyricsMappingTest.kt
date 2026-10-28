@@ -9,13 +9,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** 歌词映射：协议样本（test/resources/saltbridge/）→ 内置歌词模型 */
+/** 协议解析与歌词时间映射。 */
 class SaltLyricsMappingTest {
 
     private val session = SaltSessionSource()
 
-    private fun fixture(name: String): String =
-        String(javaClass.getResourceAsStream("/saltbridge/$name")!!.readBytes(), Charsets.UTF_8)
+    private fun fixture(name: String): String = SaltTestData.json(name)
 
     private fun lyricsBody(name: String): SaltApi.LyricsBody =
         SaltApi.parseLyrics(JsonParser().parse(fixture(name)).asJsonObject)
