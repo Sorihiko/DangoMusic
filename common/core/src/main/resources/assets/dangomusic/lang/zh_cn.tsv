@@ -340,3 +340,8 @@ Could not add to Liked songs. Please retry.	没能加入"我喜欢"，请重试�
 Could not remove from Liked songs. Please retry.	没能取消红心，请重试。
 Show sound rays	显示声音射线
 Debug: draw the rays used to measure the room, and its numbers	调试用：把测量房间的射线画出来，并在左上角显示算出的参数
+
+Extract cover color	提取封面颜色
+Use the album cover color for lyrics and translation	使用封面主色显示歌词与翻译
+Extract cover gradient	提取封面渐变色
+Blend album cover colors from left to right; requires Extract cover color	封面颜色从左到右渐变；需开启提取封面颜色

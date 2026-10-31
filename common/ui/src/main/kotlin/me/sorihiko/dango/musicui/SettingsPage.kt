@@ -235,6 +235,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
                 "glowNightOnly" to "glow", "glowColor" to "glow", "glowStrength" to "glow", "glowRadius" to "glow",
                 "wiggleFps" to "wiggle", "wiggleAmount" to "wiggle",
                 "flashSize" to "textFlash",
+                "extractCoverGradient" to "extractCoverColor",
                 "danceAuto" to "dance", "danceTap" to "dance", "danceSpin" to "dance", "danceAmount" to "dance", "danceOffset" to "dance",
                 "translationColor" to "translation", "translationAnimation" to "translation", "translationWiggle" to "translation",
             ),
@@ -245,7 +246,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
             ),
         )
         val lyrics = mutableListOf(
-            Group("Placement", "In the world", ly.m, false, ly.take(listOf("worldMode", "distance", "facePlayer", "keepAway", "stayOnScreen", "aboveGround", "spread", "scale", "smoothFont", "textColor", "splitLines"))),
+            Group("Placement", "In the world", ly.m, false, ly.take(listOf("worldMode", "distance", "facePlayer", "keepAway", "stayOnScreen", "aboveGround", "spread", "scale", "smoothFont", "textColor", "extractCoverColor", "extractCoverGradient", "splitLines"))),
             Group("Translation", "Under each line", ly.m, false, ly.take(listOf("translation", "translationColor", "translationAnimation", "translationWiggle"))),
             Group("Glow", "Deep Glow", ly.m, false, ly.take(listOf("glow", "glowNightOnly", "glowColor", "glowStrength", "glowRadius"))),
             Group("Motion", "Animation", ly.m, false, ly.take(listOf("wiggle", "wiggleFps", "wiggleAmount", "textFlash", "wordPop", "flashSize"))),

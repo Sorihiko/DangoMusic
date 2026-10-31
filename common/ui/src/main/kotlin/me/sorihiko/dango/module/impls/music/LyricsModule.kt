@@ -160,6 +160,12 @@ class LyricsModule : Module() {
     @ModuleValue("Beat offset", "Move the bounce earlier or later if it doesn't land on the beat")
     private val danceOffset = IntValue(-300, 300, 0)
 
+    @ModuleValue("Extract cover color", "Use the album cover color for lyrics and translation")
+    private val extractCoverColor = BooleanValue(false)
+
+    @ModuleValue("Extract cover gradient", "Blend album cover colors from left to right; requires Extract cover color")
+    private val extractCoverGradient = BooleanValue(false)
+
     @ModuleValue("Lyric color", "Color of the 3D lyrics")
     private val textColor = ColorValue(0xF7E1D7)
 
@@ -321,7 +327,7 @@ class LyricsModule : Module() {
         updateClock()
         val s = current
         // 小柱子的颜色取自封面，所以只开 Now playing 也要加载封面
-        if (s != null && (showCover.get() || nowPlaying.get())) {
+        if (s != null && (showCover.get() || nowPlaying.get() || extractCoverColor.get())) {
             s.track.coverUrl.takeIf { it.isNotEmpty() }?.let { cover.requestUrl(s.key, it) }
         }
         cover.upload()
@@ -535,8 +541,46 @@ class LyricsModule : Module() {
     }
 
     // 默认暖白偏粉；翻译默认比原文稍灰一点（设置里可以改）
-    private val textRgb: Int get() = textColor.value
-    private val translationRgb: Int get() = translationColor.value
+    private fun coverColors(): List<Int>? =
+        if (extractCoverColor.get() && currentKey != null && cover.shownKey == currentKey) cover.palette.takeIf { it.isNotEmpty() } else null
+
+    private val textRgb: Int get() = coverColors()?.firstOrNull()?.and(0xFFFFFF) ?: textColor.value
+    private val translationRgb: Int get() = coverColors()?.firstOrNull()?.and(0xFFFFFF) ?: translationColor.value
+
+    /** 原始水平排版决定颜色，动画和抖动不改变同一个字的颜色。 */
+    private fun gradientRgb(colors: List<Int>, position: Float): Int {
+        if (colors.size == 1) return colors[0] and 0xFFFFFF
+        val at = position.coerceIn(0f, 1f) * (colors.size - 1)
+        val index = at.toInt().coerceAtMost(colors.size - 2)
+        val t = at - index
+        val a = colors[index]
+        val b = colors[index + 1]
+        fun channel(shift: Int): Int = (((a shr shift and 255) * (1f - t) + (b shr shift and 255) * t) + 0.5f).toInt()
+        return (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
+
+    private fun glyphRgb(position: Float, fallback: Int): Int {
+        val colors = if (extractCoverGradient.get()) coverColors() else null
+        return if (colors != null) gradientRgb(colors, position) else fallback
+    }
+
+    private data class TranslationLayoutKey(val text: String, val smooth: Boolean)
+    private data class TranslationGlyph(val c: Char, val x: Float, val position: Float)
+    private val translationLayouts = object : LinkedHashMap<TranslationLayoutKey, List<TranslationGlyph>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TranslationLayoutKey, List<TranslationGlyph>>?): Boolean = size > 32
+    }
+
+    /** 仅普通译文渐变拆字，换色时复用排版。 */
+    private fun translationLayout(text: String): List<TranslationGlyph> =
+        translationLayouts.getOrPut(TranslationLayoutKey(text, smoothFont.get())) {
+            val widths = text.map { charW(it) }
+            val width = strW(text)
+            val span = (widths.sum() - (widths.lastOrNull() ?: 0f)).coerceAtLeast(0f)
+            var offset = 0f
+            text.mapIndexed { i, c ->
+                TranslationGlyph(c, offset - width / 2f, if (span > 0f) offset / span else 0f).also { offset += widths[i] }
+            }
+        }
 
     // ---------------------------------------------------------------- 歌词文字（平滑字体 / MC 字体 + 发光）
 
@@ -574,7 +618,7 @@ class LyricsModule : Module() {
         else -> Triple(1f, 1f, 1f)
     }
 
-    private class Glyph(val c: Char, val x: Float, val y: Float, val a: Float, val k: Int, val pop: Float = 1f)
+    private class Glyph(val c: Char, val x: Float, val y: Float, val a: Float, val k: Int, val pop: Float = 1f, val position: Float = 0f)
 
     /** 由 (字序号, 第几帧, 种类) 得到一个固定的 -1..1 随机数：同一帧里不管画几遍（发光层、本体）结果都一样 */
     private fun hashRand(k: Int, frame: Long, salt: Int, seed: Int): Float {
@@ -649,8 +693,12 @@ class LyricsModule : Module() {
         var k = 0
         val glyphs = ArrayList<Glyph>()
         for (line in lines) {
-            var x = -strW(line) / 2f
+            val lineWidth = strW(line)
+            val startX = -lineWidth / 2f
+            val span = if (extractCoverGradient.get() && coverColors() != null) (line.sumOf { charW(it).toDouble() }.toFloat() - (line.lastOrNull()?.let { charW(it) } ?: 0f)).coerceAtLeast(0f) else 0f
+            var x = startX
             for (c in line) {
+                val position = if (span > 0f) (x - startX) / span else 0f
                 if (flashMode && !c.isWhitespace()) {
                     // 按词闪出：到了这个词的时间，整个词一下子出现，先放大再弹回原大小
                     val at = charTimes!![min(n, charTimes.size - 1)]
@@ -660,14 +708,14 @@ class LyricsModule : Module() {
                         val a = (t * 3f).coerceIn(0f, 1f) * alphaMul
                         val back = (1f - t).coerceIn(0f, 1f)
                         val pop = 1f + 0.55f * back * back
-                        if (a > 0.02f) glyphs += Glyph(c, x, y, a, k, pop)
+                        if (a > 0.02f) glyphs += Glyph(c, x, y, a, k, pop, position)
                     }
                 } else if (!flashMode) {
                     val appearAt = k.toFloat() / total * revealMs
                     var a = ((elapsedMs - appearAt) / 180f).coerceIn(0f, 1f)
                     a = a * a * (3f - 2f * a)                 // smoothstep
                     val alpha = a * alphaMul
-                    if (alpha > 0.02f && !c.isWhitespace()) glyphs += Glyph(c, x, y + (1f - a) * 5f, alpha, k)
+                    if (alpha > 0.02f && !c.isWhitespace()) glyphs += Glyph(c, x, y + (1f - a) * 5f, alpha, k, position = position)
                 }
                 x += charW(c)
                 k++
@@ -680,7 +728,7 @@ class LyricsModule : Module() {
 
         val seed = lines.hashCode()
         val frame = System.currentTimeMillis() * wiggleFps.value.coerceAtLeast(1) / 1000L
-        for (g in glyphs) withWiggle(g, seed, frame) { drawGlyph(g.c, g.x, g.y, textRgb, g.a, smooth, !glowPass) }
+        for (g in glyphs) withWiggle(g, seed, frame) { drawGlyph(g.c, g.x, g.y, glyphRgb(g.position, textRgb), g.a, smooth, !glowPass) }
 
         if (smooth) DangoClient.gfx.text.endSmooth()
     }
@@ -708,7 +756,13 @@ class LyricsModule : Module() {
             if (alpha > 0.02f) {
                 var y = 0f
                 for (line in lines) {
-                    drawLine(line, -strW(line) / 2f, y, translationRgb, alpha, smooth, !glowPass)
+                    if (extractCoverGradient.get() && coverColors() != null) {
+                        for (g in translationLayout(line)) if (!g.c.isWhitespace()) {
+                            drawGlyph(g.c, g.x, y, glyphRgb(g.position, translationRgb), alpha, smooth, !glowPass)
+                        }
+                    } else {
+                        drawLine(line, -strW(line) / 2f, y, translationRgb, alpha, smooth, !glowPass)
+                    }
                     y += lineH
                 }
             }
@@ -719,8 +773,12 @@ class LyricsModule : Module() {
             var k = 0
             var y = 0f
             for (line in lines) {
-                var x = -strW(line) / 2f
+                val lineWidth = strW(line)
+                val startX = -lineWidth / 2f
+                val span = if (extractCoverGradient.get() && coverColors() != null) (line.sumOf { charW(it).toDouble() }.toFloat() - (line.lastOrNull()?.let { charW(it) } ?: 0f)).coerceAtLeast(0f) else 0f
+                var x = startX
                 for (c in line) {
+                    val position = if (span > 0f) (x - startX) / span else 0f
                     val a: Float
                     val lift: Float
                     if (animate) {
@@ -736,7 +794,7 @@ class LyricsModule : Module() {
                         lift = 0f
                     }
                     val alpha = a * alphaMul * 0.85f
-                    if (alpha > 0.02f && !c.isWhitespace()) glyphs += Glyph(c, x, y + lift, alpha, 1000 + k)
+                    if (alpha > 0.02f && !c.isWhitespace()) glyphs += Glyph(c, x, y + lift, alpha, 1000 + k, position = position)
                     x += charW(c)
                     k++
                 }
@@ -744,7 +802,7 @@ class LyricsModule : Module() {
             }
             val seed = lines.hashCode()
             val frame = System.currentTimeMillis() * wiggleFps.value.coerceAtLeast(1) / 1000L
-            for (g in glyphs) withWiggle(g, seed, frame, wig) { drawGlyph(g.c, g.x, g.y, translationRgb, g.a, smooth, !glowPass) }
+            for (g in glyphs) withWiggle(g, seed, frame, wig) { drawGlyph(g.c, g.x, g.y, glyphRgb(g.position, translationRgb), g.a, smooth, !glowPass) }
         }
         if (smooth) pen.endSmooth()
         pen.pop()
