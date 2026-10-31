@@ -1,0 +1,16 @@
+[
+{
+  "modid": "dangomusic",
+  "name": "Dango Music",
+  "description": "A NetEase Cloud Music player inside Minecraft: liquid-glass player, 3D lyrics, song card, Dynamic Island and Listen Together.",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "https://github.com/Sorihiko/DangoMusic",
+  "updateUrl": "",
+  "authorList": ["Sorihiko"],
+  "credits": "",
+  "logoFile": "logo.png",
+  "screenshots": [],
+  "dependencies": []
+}
+]
