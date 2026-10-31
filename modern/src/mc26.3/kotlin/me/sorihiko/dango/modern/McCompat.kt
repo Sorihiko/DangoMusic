@@ -1020,6 +1020,8 @@ abstract class CompatScreen(title: Component) : Screen(title) {
     /** 收集阶段只交一张贴图，真正的内容在原版画界面之前才画（见 ScreenLayer） */
     override fun extractRenderState(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, a: Float) {
         screenLayer.submit(graphics)
+        // 别删：26.x 的 IMBlocker 只认收集阶段问过 isFocused 的输入框
+        imeSink?.let { if (focused === it) it.isFocused }
     }
 
     override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
