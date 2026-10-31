@@ -323,13 +323,7 @@ Turn glow off in daylight and back on when it gets dark	白天关掉发光，天
 Kugou rejected the login (error %s). Refresh the QR code and try again.	酷狗拒绝了这次登录（错误 %s），请刷新二维码重试。
 Environment audio	环境音效
 Sound around you	音乐跟着环境变
-Music changes with where you are	歌曲会随你所在的地方变化
-Underwater	水下变闷
-Muffled while your head is underwater	头在水里时声音变闷，像隔着水听
-Cave echo	洞穴回声
-Echo in enclosed places with no sky above	在头顶看不到天空、四周封闭的地方加回声
-Indoors	室内变闷
-Slightly muffled, with some room echo, under a roof	头顶有遮挡时声音稍微变闷，带一点房间的回声
+Echo follows the room you are in (size and materials), muffled underwater	回声跟着你所在的空间变（大小、墙的材质），水下变闷
 Rain	下雨压低
 A little quieter in rain and thunder	下雨、打雷时音量稍微降低
 Effect strength	效果强度
@@ -344,3 +338,5 @@ Volume normalization	音量均衡
 Keep songs at a similar loudness	让不同的歌听起来差不多响
 Could not add to Liked songs. Please retry.	没能加入"我喜欢"，请重试。
 Could not remove from Liked songs. Please retry.	没能取消红心，请重试。
+Show sound rays	显示声音射线
+Debug: draw the rays used to measure the room, and its numbers	调试用：把测量房间的射线画出来，并在左上角显示算出的参数

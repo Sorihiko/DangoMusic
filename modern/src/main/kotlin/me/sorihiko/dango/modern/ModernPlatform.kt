@@ -8,6 +8,7 @@ import me.sorihiko.dango.platform.PlayerKeyBinding
 
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.block.SoundType
 import net.minecraft.client.gui.screens.ChatScreen
 import net.minecraft.client.gui.screens.TitleScreen
 
@@ -104,6 +105,19 @@ object ModernPlatform : Platform {
             return ListenerEnvironment(p.isUnderWater, level.canSeeSky(eye), hits / RAY_DIRECTIONS.size.toFloat(), rain)
         }
 
+    private val probe = BlockPos.MutableBlockPos()
+    private val absorptionCache = java.util.IdentityHashMap<net.minecraft.world.level.block.state.BlockState, Float>()
+
+    override fun soundAbsorption(x: Int, y: Int, z: Int): Float {
+        val level = mc.level ?: return -1f
+        probe.set(x, y, z)
+        val state = level.getBlockState(probe)
+        return absorptionCache.getOrPut(state) {
+            if (state.isAir || !state.fluidState.isEmpty || state.getCollisionShape(level, probe).isEmpty) -1f
+            else soundAbsorptionOf(state.soundType)
+        }
+    }
+
     override fun openAudioOutput(sampleRate: Int, channels: Int): me.sorihiko.dango.music.AudioOutput? =
         GameAudioOutput.open(sampleRate, channels)
 
@@ -116,6 +130,24 @@ object ModernPlatform : Platform {
     override fun openMusicScreen() {
         if (McCompat.glAvailable) McCompat.setScreen(ModernMusicScreen(McCompat.currentScreen())) else McCompat.notifyNoGl(again = true)
     }
+}
+
+/**
+ * 方块按脚步声的材质分几类，吸音系数参考常见建筑材料（中频）：
+ * 石头、砖约 2~3%，金属 4%，玻璃 5%，木头约 12%，泥土、草约 30%，沙砾 35%，苔藓 45%，雪 50%，羊毛约 70%
+ */
+private fun soundAbsorptionOf(sound: SoundType): Float = when (sound) {
+    SoundType.STONE, SoundType.DEEPSLATE, SoundType.TUFF, SoundType.CALCITE, SoundType.BASALT,
+    SoundType.NETHER_BRICKS, SoundType.NETHERRACK -> 0.03f
+    SoundType.METAL, SoundType.COPPER -> 0.04f
+    SoundType.GLASS -> 0.05f
+    SoundType.WOOD, SoundType.BAMBOO_WOOD, SoundType.CHERRY_WOOD, SoundType.NETHER_WOOD -> 0.12f
+    SoundType.GRASS, SoundType.ROOTED_DIRT, SoundType.MUD -> 0.3f
+    SoundType.GRAVEL, SoundType.SAND, SoundType.SOUL_SAND -> 0.35f
+    SoundType.MOSS -> 0.45f
+    SoundType.SNOW, SoundType.POWDER_SNOW -> 0.5f
+    SoundType.WOOL -> 0.7f
+    else -> 0.1f
 }
 
 /** 环境音效看周围闭塞程度时，每个方向最多看几格 */

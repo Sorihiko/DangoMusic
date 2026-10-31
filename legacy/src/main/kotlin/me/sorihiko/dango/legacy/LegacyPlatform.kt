@@ -67,6 +67,27 @@ object LegacyPlatform : Platform {
 
     override val skyDarken: Int? get() = mc.theWorld?.skylightSubtracted
 
+    private val absorptionCache = java.util.IdentityHashMap<net.minecraft.block.Block, Float>()
+
+    override fun soundAbsorption(x: Int, y: Int, z: Int): Float {
+        val world = mc.theWorld ?: return -1f
+        val block = world.getBlockState(net.minecraft.util.BlockPos(x, y, z)).block
+        return absorptionCache.getOrPut(block) {
+            val material = block.material
+            if (material.isLiquid || !material.blocksMovement()) -1f else when (block.stepSound) {
+                net.minecraft.block.Block.soundTypeStone, net.minecraft.block.Block.soundTypePiston -> 0.03f
+                net.minecraft.block.Block.soundTypeMetal, net.minecraft.block.Block.soundTypeAnvil -> 0.04f
+                net.minecraft.block.Block.soundTypeGlass -> 0.05f
+                net.minecraft.block.Block.soundTypeWood, net.minecraft.block.Block.soundTypeLadder -> 0.12f
+                net.minecraft.block.Block.soundTypeGrass -> 0.3f
+                net.minecraft.block.Block.soundTypeGravel, net.minecraft.block.Block.soundTypeSand -> 0.35f
+                net.minecraft.block.Block.soundTypeSnow -> 0.5f
+                net.minecraft.block.Block.soundTypeCloth -> 0.7f
+                else -> 0.1f
+            }
+        }
+    }
+
     override val environment: me.sorihiko.dango.platform.ListenerEnvironment?
         get() {
             val p = mc.thePlayer ?: return null
