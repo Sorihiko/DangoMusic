@@ -147,6 +147,8 @@ object LegacyText : TextCanvas {
 
     override fun color(r: Float, g: Float, b: Float, a: Float) = GL11.glColor4f(r, g, b, a)
 
+    override fun lyricFont(file: java.io.File?) = CjkFont.setLyricFont(file)
+
     override fun smoothText(text: String, x: Float, baseline: Float, size: Float, style: Int) =
         CjkFont.draw(text, x, baseline, size, style)
 

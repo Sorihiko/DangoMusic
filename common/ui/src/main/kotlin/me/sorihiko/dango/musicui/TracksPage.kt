@@ -228,6 +228,10 @@ internal class TracksPage(private val screen: MusicScreen) {
         if (cover) drawCoverflow(area, tracks, list) else drawTrackList(area, tracks, list)
     }
 
+    /** 当前打开的歌单已经显示了一部分，后面还在加载 */
+    private fun partiallyLoaded(): Boolean =
+        ScreenState.page == Page.PLAYLIST && ScreenState.opened?.id?.let { Library.loadingTracks(it) } == true
+
     /** 当前打开的歌单的加载进度（[已拿到, 总数]） */
     private fun loadingProgress(): IntArray? = ScreenState.opened?.id?.let { Library.trackProgress(it) }
 
@@ -256,7 +260,7 @@ internal class TracksPage(private val screen: MusicScreen) {
         val p = state.opened
         if (state.page == Page.PLAYLIST && p != null) {
             val cv = LayoutBounds(x, y, 96f, 96f)
-            ui.drawCover(cv, CoverCache.playlist(p), 12f)
+            ui.drawCover(cv, CoverCache.playlistRounded(p, 0.1f), 12f)
             x = cv.right + 18f
             headerH = 112f
         }
@@ -273,13 +277,15 @@ internal class TracksPage(private val screen: MusicScreen) {
             state.page == Page.SEARCH && tracks.isNullOrEmpty() ->
                 if (Library.searchError.isNotEmpty()) I18n.text("Search failed: ") + I18n.message(Library.searchError) else I18n.text("No results")
             state.page == Page.QUEUE && tracks.isNullOrEmpty() -> I18n.text("Nothing in the queue yet")
-            tracks == null -> loadingProgress()?.takeIf { it[1] > 0 }?.let { I18n.format("Loaded %d of %d songs", it[0], it[1]) } ?: I18n.text("Loading...")
+            tracks == null || partiallyLoaded() -> loadingProgress()?.takeIf { it[1] > 0 }?.let { I18n.format("Loaded %d of %d songs", it[0], it[1]) } ?: I18n.text("Loading...")
             filterText.isNotEmpty() -> I18n.format("%d of %d songs", shown(tracks).size, tracks.size)
             else -> I18n.format("%d songs", tracks.size)
         }
         ui.text(sub, x, y + 34f, 11f, Theme.TEXT_SECONDARY, Theme.FONT_SEMIBOLD)
         // 歌单还在加载：知道总数就按比例走（平滑地追上去），不知道就来回滑，表示没卡住
-        if (tracks == null && state.page != Page.SEARCH && state.page != Page.QUEUE) {
+        // 已经先显示了一部分时，进度条挪到"播放全部"右边，不和按钮重叠
+        val partial = tracks != null && partiallyLoaded()
+        if ((tracks == null || partial) && state.page != Page.SEARCH && state.page != Page.QUEUE) {
             val pr = loadingProgress()
             val key = state.opened?.id ?: 0L
             if (key != loadKey) {
@@ -288,7 +294,9 @@ internal class TracksPage(private val screen: MusicScreen) {
             }
             val target = pr?.takeIf { it[1] > 0 }?.let { (it[0].toFloat() / it[1]).coerceIn(0f, 1f) }
             val shownFraction = target?.let { loadBar.tick(it) }
-            ui.progressBar(LayoutBounds(x, y + 54f, 220f, 4f), shownFraction)
+            val barX = if (partial) x + ui.width(I18n.text("Play all"), 12f, Theme.FONT_SEMIBOLD) + 44f + 14f else x
+            val barY = if (partial) y + (if (headerH > 100f) 64f else 52f) + 7f else y + 54f
+            ui.progressBar(LayoutBounds(barX, barY, 180f, 4f), shownFraction)
         }
 
         // 播放全部
@@ -470,7 +478,7 @@ internal class TracksPage(private val screen: MusicScreen) {
                     ui.text("${i + 1}", row.x + 12f, row.y + 15f, 11f, Theme.TEXT_TERTIARY)
                 }
                 val thumb = LayoutBounds(row.x + 46f, row.y + 4f, row.height - 8f, row.height - 8f)
-                ui.drawCover(thumb, CoverCache.track(t), 6f)
+                ui.drawCover(thumb, CoverCache.trackRounded(t, 0.15f), 6f)
                 val tx = thumb.right + 12f
                 val durW = 44f
                 val avail = row.right - durW - 12f - tx
@@ -528,7 +536,7 @@ internal class TracksPage(private val screen: MusicScreen) {
             val a = (1f - min(ad, 4f) * 0.2f).coerceAtLeast(0.15f) * edgeFade(item.b)
             if (a < 0.01f) continue
             ui.ctx.pushOpacity(a)
-            ui.drawCover(item.b, CoverCache.track(tracks[item.i]), 12f)
+            ui.drawCover(item.b, CoverCache.trackRounded(tracks[item.i], 0.08f), 12f)
             if (ad > 0.5f) ui.card(item.b, Color(0f, 0f, 0f, min(0.45f, ad * 0.18f)), 2f)
             ui.ctx.popOpacity()
         }

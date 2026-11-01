@@ -54,8 +54,6 @@ Lyrics size	歌词大小
 Distance	距离
 How far away 3D lyrics appear (blocks)	3D 歌词的显示距离（方块）
 Deep Glow style: white-hot core, wide soft halo	明亮文字与宽阔柔和的光晕
-Glow color	发光颜色
-Glow tint: text color, pink, blue or gold	跟随字色、粉色、蓝色或金色
 Glow strength	发光强度
 Glow brightness	光晕亮度
 Glow radius	发光范围
@@ -340,3 +338,8 @@ Could not add to Liked songs. Please retry.	没能加入"我喜欢"，请重试�
 Could not remove from Liked songs. Please retry.	没能取消红心，请重试。
 Show sound rays	显示声音射线
 Debug: draw the rays used to measure the room, and its numbers	调试用：把测量房间的射线画出来，并在左上角显示算出的参数
+Lyric font	歌词字体
+Put .ttf / .otf files into config/dangomusic/fonts, then pick one here	把 .ttf / .otf 字体放进 config/dangomusic/fonts 文件夹，再在这里选（要开平滑字体）
+Default	默认
+Fonts folder: 	字体文件夹：
+ (put .ttf / .otf files here)	（把 .ttf / .otf 放进去）

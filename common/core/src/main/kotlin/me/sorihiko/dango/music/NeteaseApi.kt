@@ -149,7 +149,8 @@ object NeteaseApi {
 
     /** 歌单里的全部歌曲：详情接口给出全部 ID，前一部分直接带歌曲信息，剩下的分批补齐 */
     fun playlistTracks(playlistId: Long): List<NeteaseTrack> {
-        val o = getJson("https://music.163.com/api/v6/playlist/detail?id=$playlistId&n=1000&s=0") ?: return emptyList()
+        // 详情只要前 200 首的完整信息：回包小、来得快，界面能马上先显示；剩下的按 ID 分批补
+        val o = getJson("https://music.163.com/api/v6/playlist/detail?id=$playlistId&n=200&s=0") ?: return emptyList()
         val pl = o.get("playlist") as? JsonObject ?: return emptyList()
         val known = LinkedHashMap<Long, NeteaseTrack>()
         pl.getAsJsonArray("tracks")?.forEach { el ->
@@ -161,6 +162,14 @@ object NeteaseApi {
 
         val missing = ids.filter { it !in known }
         TrackLoadProgress.report(ids.size - missing.size, ids.size)
+        // 先把开头已经齐了的那段交给界面（到第一首还没拿到的为止），后面每补一批就再交一次
+        var ready = 0
+        fun publishReady() {
+            if (!TrackLoadProgress.wantsPartial) return
+            while (ready < ids.size && ids[ready] in known) ready++
+            if (ready < ids.size) TrackLoadProgress.partial(ids.subList(0, ready).map { known.getValue(it) })
+        }
+        publishReady()
         for (batch in missing.chunked(200)) {
             try {
                 val res = getJson("https://music.163.com/api/song/detail?ids=" + enc(batch.joinToString(",", "[", "]")))
@@ -170,6 +179,7 @@ object NeteaseApi {
             } catch (_: Exception) {
             }
             TrackLoadProgress.report(ids.count { it in known }, ids.size)
+            publishReady()
         }
         return ids.mapNotNull { known[it] }
     }

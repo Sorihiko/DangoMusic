@@ -213,7 +213,10 @@ internal class Sidebar(private val screen: MusicScreen) {
                 ui.card(row, Theme.CARD_HOVER, 9f)
             }
             val liked = i == firstOwned   // 第一个自己的歌单就是"我喜欢的音乐"
-            ui.icon(if (liked) "♥" else "≡", row.x + 18f, row.y + 14f, 12f, if (liked || active) RED else Theme.TEXT_SECONDARY)
+            // 歌单封面的小缩略图；"我喜欢的音乐"和还没加载出封面的照旧画图标
+            val thumb = if (liked || p.coverUrl.isEmpty()) null else CoverCache.playlistRounded(p, 0.25f)
+            if (thumb != null) ui.drawCover(LayoutBounds(row.x + 9f, row.y + 5f, 18f, 18f), thumb)
+            else ui.icon(if (liked) "♥" else "≡", row.x + 18f, row.y + 14f, 12f, if (liked || active) RED else Theme.TEXT_SECONDARY)
             val c = if (active) Theme.TEXT_PRIMARY else if (p.owned) Theme.TEXT_PRIMARY else Theme.TEXT_SECONDARY
             ui.text(ui.trim(p.name, row.right - 8f - (row.x + 34f), 12f), row.x + 34f, row.y + 9f, 12f, c)
             ui.hits += row.intersect(listShown) to { screen.openPlaylist(p, null) }

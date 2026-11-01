@@ -15,6 +15,8 @@ import me.sorihiko.dango.module.Category
 import me.sorihiko.dango.module.Module
 import me.sorihiko.dango.module.ModuleMeta
 import me.sorihiko.dango.module.values.BooleanValue
+import me.sorihiko.dango.module.values.TextValue
+import me.sorihiko.dango.music.LyricFonts
 import me.sorihiko.dango.module.values.ColorValue
 import me.sorihiko.dango.module.values.FloatValue
 import me.sorihiko.dango.module.values.IntValue
@@ -85,9 +87,6 @@ class LyricsModule : Module() {
     @ModuleValue("Night glow only", "Turn glow off in daylight and back on when it gets dark")
     private val glowNightOnly = BooleanValue(false)
 
-    @ModuleValue("Glow color", "Glow tint: text color, pink, blue or gold")
-    private val glowColor = IntValue(0, 3, 0)
-
     @ModuleValue("Glow strength", "Glow brightness")
     private val glowStrength = FloatValue(0f, 3f, 0.3f, 2)
 
@@ -96,6 +95,9 @@ class LyricsModule : Module() {
 
     @ModuleValue("Smooth font", "Smooth font instead of the Minecraft pixel font")
     private val smoothFont = BooleanValue(false)
+
+    @ModuleValue("Lyric font", "Put .ttf / .otf files into config/dangomusic/fonts, then pick one here")
+    private val lyricFont = TextValue("")
 
     @ModuleValue("Wiggle", "Low-fps jitter on every letter, like hand-drawn animation")
     private val wiggle = BooleanValue(true)
@@ -318,6 +320,8 @@ class LyricsModule : Module() {
         val platform = DangoClient.platform
         Dance.tapTick(platform.inGame && platform.isMouseDown(0), platform.inGame)
         if (!enabled) return
+        // 歌词字体：选了就换（同一个文件不会重复加载）
+        DangoClient.gfx.text.lyricFont(if (smoothFont.get()) LyricFonts.file(lyricFont.value) else null)
         updateClock()
         val s = current
         // 小柱子的颜色取自封面，所以只开 Now playing 也要加载封面
@@ -380,8 +384,8 @@ class LyricsModule : Module() {
                             } finally {
                                 glowPass = false
                             }
-                            val (r, g, b) = glowTint()
-                            deepGlow.end(r, g, b, glowAmount * 4f, glowRadius.value)
+                            // 光晕是字本身的颜色扩散出去，不另外染色
+                            deepGlow.end(1f, 1f, 1f, glowAmount * 4f, glowRadius.value)
                         }
                     } catch (t: Throwable) {
                         // 发光出任何错都不影响歌词本身：关掉发光，下面照常画字
@@ -544,10 +548,10 @@ class LyricsModule : Module() {
     private val lyricSize = 10f
 
     private fun strW(s: String): Float =
-        if (smoothFont.get()) DangoClient.gfx.text.smoothWidth(s, lyricSize, CjkStyle.PLAIN) else DangoClient.gfx.text.pixelWidth(s)
+        if (smoothFont.get()) DangoClient.gfx.text.smoothWidth(s, lyricSize, CjkStyle.LYRIC) else DangoClient.gfx.text.pixelWidth(s)
 
     private fun charW(c: Char): Float =
-        if (smoothFont.get()) DangoClient.gfx.text.smoothWidth(c.toString(), lyricSize, CjkStyle.PLAIN) else DangoClient.gfx.text.pixelCharWidth(c)
+        if (smoothFont.get()) DangoClient.gfx.text.smoothWidth(c.toString(), lyricSize, CjkStyle.LYRIC) else DangoClient.gfx.text.pixelCharWidth(c)
 
     /** 光晕颜色（乘在字本身的颜色上）：0 = 跟随字色 */
     /** 只在晚上发光时：天黑（含下雨天变暗）慢慢亮起来，天亮慢慢灭掉。返回 0..1 */
@@ -565,13 +569,6 @@ class LyricsModule : Module() {
         nightNanos = now
         nightLevel += (target - nightLevel) * (1f - kotlin.math.exp(-dt / 0.8f))
         return nightLevel
-    }
-
-    private fun glowTint(): Triple<Float, Float, Float> = when (glowColor.value) {
-        1 -> Triple(1f, 0.38f, 0.62f)
-        2 -> Triple(0.32f, 0.66f, 1f)
-        3 -> Triple(1f, 0.74f, 0.30f)
-        else -> Triple(1f, 1f, 1f)
     }
 
     private class Glyph(val c: Char, val x: Float, val y: Float, val a: Float, val k: Int, val pop: Float = 1f)
@@ -624,10 +621,10 @@ class LyricsModule : Module() {
             val baseline = y + 7.6f
             if (shadow) {
                 pen.color(0f, 0f, 0f, 0.45f * a)
-                pen.smoothText(c.toString(), x + 0.6f, baseline + 0.6f, lyricSize, CjkStyle.PLAIN)
+                pen.smoothText(c.toString(), x + 0.6f, baseline + 0.6f, lyricSize, CjkStyle.LYRIC)
             }
             pen.color(r, g, b, a)
-            pen.smoothText(c.toString(), x, baseline, lyricSize, CjkStyle.PLAIN)
+            pen.smoothText(c.toString(), x, baseline, lyricSize, CjkStyle.LYRIC)
         } else {
             val alpha = (a * 255f).toInt()
             if (alpha < 5) return                          // FontRenderer 会把 alpha<4 当成不透明
@@ -760,10 +757,10 @@ class LyricsModule : Module() {
             val baseline = y + 7.6f
             if (shadow) {
                 pen.color(0f, 0f, 0f, 0.45f * a)
-                pen.smoothText(text, x + 0.6f, baseline + 0.6f, lyricSize, CjkStyle.PLAIN)
+                pen.smoothText(text, x + 0.6f, baseline + 0.6f, lyricSize, CjkStyle.LYRIC)
             }
             pen.color(r, g, b, a)
-            pen.smoothText(text, x, baseline, lyricSize, CjkStyle.PLAIN)
+            pen.smoothText(text, x, baseline, lyricSize, CjkStyle.LYRIC)
         } else {
             val alpha = (a * 255f).toInt()
             if (alpha < 5) return

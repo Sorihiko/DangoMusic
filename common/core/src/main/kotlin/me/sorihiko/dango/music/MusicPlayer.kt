@@ -149,6 +149,16 @@ object MusicPlayer {
         }
     }
 
+    /**
+     * 歌单还在加载时就开始放了：加载出更多后把队列换成更长的版本。
+     * 只在队列还是 [from] 本身、并且 [to] 以它为开头时才换，当前这首和播放位置都不变。
+     */
+    fun growQueue(from: List<NeteaseTrack>, to: List<NeteaseTrack>) {
+        if (queue !== from || radio != null || to.size <= from.size) return
+        for (i in from.indices) if (from[i].key != to[i].key) return
+        queue = to
+    }
+
     /** 一起听：正在跟随房主（歌放完不自动下一首，等房主切） */
     @Volatile var followMode = false
 

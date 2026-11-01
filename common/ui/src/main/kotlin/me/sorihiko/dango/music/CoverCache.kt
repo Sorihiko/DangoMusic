@@ -185,6 +185,7 @@ object CoverCache {
         return out
     }
     fun playlist(p: NeteasePlaylist) = get("p:${p.id}", p.coverUrl)
+    fun playlistRounded(p: NeteasePlaylist, ratio: Float = ROUND) = rounded("p:${p.id}", p.coverUrl, ratio)
 
     private fun square(src: BufferedImage, size: Int): BufferedImage {
         val side = min(src.width, src.height)

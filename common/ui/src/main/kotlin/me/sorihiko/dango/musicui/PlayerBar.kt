@@ -49,7 +49,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         // 左：封面 + 歌名 / 歌手
         val cs = 48f
         val coverBox = LayoutBounds(bar.x + 13f, bar.y + (bar.height - cs) / 2f, cs, cs)
-        ui.drawCover(coverBox, t?.let { CoverCache.track(it) }, 8f)
+        ui.drawCover(coverBox, t?.let { CoverCache.trackRounded(it, 0.17f) }, 8f)
         val infoX = coverBox.right + 12f
         val infoW = 220f
         val title = t?.name ?: I18n.text("Not playing")

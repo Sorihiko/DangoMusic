@@ -82,28 +82,73 @@ internal class KugouCatalog(
         val account = NativeAccounts.get(MusicSource.KUGOU)
         if (ref.kind == "personal" && account?.userId != ref.owner)
             throw SourceAccessException("Log in to Kugou to read your playlists.")
+        fun page(number: Int): JsonObject = if (ref.kind == "rank") call("/ocean/v6/rank/song",
+            mapOf("rankid" to ref.native.toString(),"page" to number.toString(),"pagesize" to "50"),null,null)
+        else call("/cloudlist.service/v4/get_list_all_file",mapOf("plat" to "1"),JsonObject().apply {
+            addProperty("userid",account!!.userId.toLong()); addProperty("token",account.token); addProperty("listid",ref.native)
+            addProperty("area_code",1); addProperty("show_relate_goods",0); addProperty("allplatform",1); addProperty("show_cover",1)
+            addProperty("type",0); addProperty("page",number); addProperty("pagesize",50)
+        },account)
+        fun parse(data: JsonObject): List<NeteaseTrack> =
+            data.array("info").mapNotNull { if (it.isJsonObject) KugouMusicSource.parseTrack(it.asJsonObject) else null }
+
         val tracks = LinkedHashMap<String,NeteaseTrack>()
-        var consumed = 0L
-        for (page in 1..400) {
-            val data = if (ref.kind == "rank") call("/ocean/v6/rank/song",
-                mapOf("rankid" to ref.native.toString(),"page" to page.toString(),"pagesize" to "50"),null,null)
-            else call("/cloudlist.service/v4/get_list_all_file",mapOf("plat" to "1"),JsonObject().apply {
-                addProperty("userid",account!!.userId.toLong()); addProperty("token",account.token); addProperty("listid",ref.native)
-                addProperty("area_code",1); addProperty("show_relate_goods",0); addProperty("allplatform",1); addProperty("show_cover",1)
-                addProperty("type",0); addProperty("page",page); addProperty("pagesize",50)
-            },account)
-            val list = data.array("info")
-            var added = 0
-            for (item in list) if (item.isJsonObject) KugouMusicSource.parseTrack(item.asJsonObject)?.let { if (tracks.put(it.key,it) == null) added++ }
-            val total = data.number(if (ref.kind == "rank") "total" else "count")
-            consumed += list.size()
-            TrackLoadProgress.report(tracks.size, total.toInt())
-            if (list.size() == 0 || (total > 0 && consumed >= total) || (total <= 0 && list.size() < 50)) {
-                // 个人歌单接口按收藏时间从早到晚返回，酷狗 App 里是最新收藏的在最前面；排行榜保持原样
-                val all = tracks.values.toList()
-                return if (ref.kind == "personal") all.reversed() else all
+        val first = page(1)
+        val total = first.number(if (ref.kind == "rank") "total" else "count")
+        val firstPage = parse(first)
+        if (ref.kind == "personal") {
+            // 个人歌单接口按收藏时间从早到晚返回，酷狗 App 里是最新收藏的在最前面：
+            // 先拿到总数，再从最后一页往前取，每页倒过来接在后面，边取边显示时顺序就已经是最终的样子
+            // 页数按服务器第一页实际给了几条算（有时一页不到 50 条）
+            val perPage = first.array("info").size().coerceAtLeast(1)
+            val pages = if (total > perPage) ((total + perPage - 1) / perPage).toInt() else 1
+            if (pages > 400) throw SourceAccessException("Kugou returned too many library pages. Please retry.")
+            var received = first.array("info").size().toLong()
+            for (number in pages downTo 2) {
+                val data = page(number)
+                received += data.array("info").size()
+                for (t in parse(data).asReversed()) tracks.putIfAbsent(t.key, t)
+                TrackLoadProgress.report(tracks.size, total.toInt())
+                TrackLoadProgress.partial(tracks.values.toList())
             }
+            for (t in firstPage.asReversed()) tracks.putIfAbsent(t.key, t)
+            if (total <= 0 || received >= total) {
+                TrackLoadProgress.report(tracks.size, total.toInt())
+                return tracks.values.toList()
+            }
+            // 每页条数不一样、倒着取漏了：退回从前往后一页页翻，直到收齐
+            val forward = LinkedHashMap<String,NeteaseTrack>()
+            for (t in firstPage) forward.putIfAbsent(t.key, t)
+            var consumed = first.array("info").size().toLong()
+            for (number in 2..400) {
+                val data = page(number)
+                val size = data.array("info").size()
+                if (size == 0) break
+                var added = 0
+                for (t in parse(data)) if (forward.putIfAbsent(t.key, t) == null) added++
+                consumed += size
+                TrackLoadProgress.report(forward.size, total.toInt())
+                if (consumed >= total) break
+                if (added == 0) throw SourceAccessException("Kugou repeated a library page. Please retry.")
+            }
+            return forward.values.toList().asReversed().toList()
+        }
+        // 排行榜：从前往后翻页
+        var list = firstPage
+        var received = first.array("info").size().toLong()
+        for (number in 1..400) {
+            if (number > 1) {
+                val data = page(number)
+                if (data.array("info").size() == 0) return tracks.values.toList()
+                list = parse(data)
+                received += data.array("info").size()
+            }
+            var added = 0
+            for (t in list) if (tracks.put(t.key, t) == null) added++
+            TrackLoadProgress.report(tracks.size, total.toInt())
+            if ((total > 0 && received >= total) || (total <= 0 && list.size < 50)) return tracks.values.toList()
             if (added == 0) throw SourceAccessException("Kugou repeated a library page. Please retry.")
+            TrackLoadProgress.partial(tracks.values.toList())
         }
         throw SourceAccessException("Kugou returned too many library pages. Please retry.")
     }

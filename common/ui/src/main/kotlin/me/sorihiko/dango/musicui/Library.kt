@@ -6,6 +6,7 @@ import me.sorihiko.dango.music.NeteaseApi
 import me.sorihiko.dango.music.NeteasePlaylist
 import me.sorihiko.dango.music.NeteaseTrack
 import me.sorihiko.dango.music.MusicSource
+import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.MusicSourceApi
 import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.SourceAccessException
@@ -118,13 +119,30 @@ internal object Library {
         val request = request()
         worker.execute {
             var error = ""
+            // 大歌单边加载边显示：每拿到一批就先放进缓存，界面马上能看到、能点歌
+            val partial: (List<NeteaseTrack>) -> Unit = { list -> publish(request) { replaceTracks(playlistId, list) } }
             val result = try {
-                TrackLoadProgress.track({ loaded, total -> trackProgress[playlistId] = intArrayOf(loaded, total) }) { request.api.playlistTracks(playlistId) }
-            } catch (e: Exception) { error = publicError(e); emptyList() }
+                TrackLoadProgress.track({ loaded, total -> trackProgress[playlistId] = intArrayOf(loaded, total) }, partial) { request.api.playlistTracks(playlistId) }
+            } catch (e: Exception) { error = publicError(e); null }
             trackProgress.remove(playlistId)
-            publish(request) { tracksCache[playlistId] = result; tracksLoading.remove(playlistId); if (error.isNotEmpty()) { tracksFailed.add(playlistId); status = error } }
+            publish(request) {
+                // 失败时保留已经显示的那部分
+                if (result != null) replaceTracks(playlistId, result) else if (!tracksCache.containsKey(playlistId)) tracksCache[playlistId] = emptyList()
+                tracksLoading.remove(playlistId)
+                if (error.isNotEmpty()) { tracksFailed.add(playlistId); status = error }
+            }
         }
     }
+    /** 换上更新（更长）的歌曲列表；如果正在放的就是旧列表，队列也一起换成新的 */
+    private fun replaceTracks(playlistId: Long, tracks: List<NeteaseTrack>) {
+        val old = tracksCache[playlistId]
+        tracksCache[playlistId] = tracks
+        if (old != null) MusicPlayer.growQueue(old, tracks)
+    }
+
+    /** 这个歌单是不是还在加载（可能已经先显示了一部分） */
+    fun loadingTracks(playlistId: Long): Boolean = tracksLoading.contains(playlistId)
+
     @Synchronized fun search(q: String) {
         val request = request()
         val serial = ++searchSerial

@@ -51,6 +51,8 @@ object CjkStyle {
     const val PLAIN = 0
     const val BOLD = 1
     const val DISPLAY = 2
+    /** 歌词（玩家选的字体，没有的字退回普通字体） */
+    const val LYRIC = 3
 }
 
 /** 一段要画的平滑字体文字。centered = (x, y) 是可见部分的中心；否则 y 是基线 */
@@ -105,6 +107,9 @@ interface TextCanvas {
 
     /** 平滑字体的颜色 */
     fun color(r: Float, g: Float, b: Float, a: Float)
+
+    /** 歌词用的字体文件（null = 默认）；只在渲染线程调用 */
+    fun lyricFont(file: java.io.File?) {}
 
     /** 平滑字体：y 是基线 */
     fun smoothText(text: String, x: Float, baseline: Float, size: Float, style: Int)

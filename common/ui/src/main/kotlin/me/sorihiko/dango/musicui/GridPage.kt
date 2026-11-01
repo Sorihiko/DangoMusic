@@ -73,7 +73,7 @@ internal class GridPage(private val screen: MusicScreen) {
                     val cell = LayoutBounds(x, y, cw, rowH - 6f)
                     val hov = ui.hover(cell) && clip.contains(ui.mx, ui.my)
                     if (hov) ui.ctx.drawShape(LayoutBounds(x - 5f, y - 5f, cw + 10f, rowH + 2f), ShapeStyle(Theme.CARD_HOVER, 14f))
-                    ui.drawCover(cover, CoverCache.playlist(p), 12f)
+                    ui.drawCover(cover, CoverCache.playlistRounded(p, 0.08f), 12f)
                     if (hov) {
                         // 悬停：右下角一个播放按钮
                         val pb = LayoutBounds(cover.right - 40f, cover.bottom - 40f, 30f, 30f)

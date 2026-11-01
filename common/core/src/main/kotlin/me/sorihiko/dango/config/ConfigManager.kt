@@ -13,6 +13,7 @@ import me.sorihiko.dango.module.Module
 import me.sorihiko.dango.module.ModuleManager
 import me.sorihiko.dango.module.values.BooleanValue
 import me.sorihiko.dango.module.values.ColorValue
+import me.sorihiko.dango.module.values.TextValue
 import me.sorihiko.dango.module.values.FloatValue
 import me.sorihiko.dango.module.values.IntValue
 import me.sorihiko.dango.module.values.ModuleValue
@@ -91,6 +92,7 @@ class ConfigManager(
             is IntValue -> value.setValue(json.asInt)
             is FloatValue -> value.setValue(json.asFloat)
             is ColorValue -> if (json.isJsonPrimitive) ColorValue.parse(json.asString)?.let { value.setValue(it) }
+            is TextValue -> if (json.isJsonPrimitive) value.value = json.asString
         }
     }
 
@@ -108,6 +110,7 @@ class ConfigManager(
                     is IntValue -> values.addProperty(field.name, v.value)
                     is FloatValue -> values.addProperty(field.name, v.value)
                     is ColorValue -> values.addProperty(field.name, v.hex())
+                    is TextValue -> values.addProperty(field.name, v.value)
                 }
             }
             obj.add("values", values)

@@ -104,6 +104,7 @@ internal class QqCatalog(private val call: (String, String, JsonObject, NativeAc
             TrackLoadProgress.report(songs.size, total.toInt())
             if (list.size() == 0 || (total > 0 && offset >= total) || (!ref.chart && page.number("hasmore") == 0L) || (ref.chart && list.size() < 100)) return songs.values.toList()
             if (added == 0) throw SourceAccessException("QQ Music repeated a playlist page. Please retry.")
+            TrackLoadProgress.partial(songs.values.toList())
         }
         throw SourceAccessException("QQ Music returned too many songs. Please retry.")
     }

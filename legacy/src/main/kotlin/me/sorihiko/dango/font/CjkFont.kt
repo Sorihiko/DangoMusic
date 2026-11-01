@@ -36,6 +36,8 @@ object CjkFont {
     const val PLAIN = 0
     const val BOLD = 1
     const val DISPLAY = 2
+    /** 歌词：先用玩家放进 fonts 文件夹里选中的字体，没有的字再退回普通字体 */
+    const val LYRIC = 3
 
     /** 字形贴图里的字号（像素），屏幕上按需缩放 */
     private fun baseOf(style: Int) = if (style == DISPLAY) 96f else 48f
@@ -63,7 +65,7 @@ object CjkFont {
     )
 
     private val frc = FontRenderContext(null, true, true)
-    private val fontLists = arrayOfNulls<List<Font>>(3)
+    private val fontLists = arrayOfNulls<List<Font>>(4)
 
     private val glyphs = HashMap<Int, Glyph?>()
     private val pages = ArrayList<Int>()
@@ -83,6 +85,11 @@ object CjkFont {
 
     private fun fonts(style: Int): List<Font> {
         fontLists[style]?.let { return it }
+        if (style == LYRIC) {
+            val list = (lyricFont?.let { listOf(it.deriveFont(Font.PLAIN, baseOf(LYRIC))) } ?: emptyList()) + fonts(PLAIN)
+            fontLists[LYRIC] = list
+            return list
+        }
         val base = baseOf(style)
         val awtStyle = if (style == PLAIN) Font.PLAIN else Font.BOLD
         val list = mutableListOf<Font>()
@@ -141,7 +148,7 @@ object CjkFont {
     }
 
     fun glyph(c: Char, style: Int): Glyph? {
-        val key = c.code * 3 + style
+        val key = c.code * 4 + style
         if (glyphs.containsKey(key)) return glyphs[key]
         val g = try {
             render(c, style)
@@ -150,6 +157,27 @@ object CjkFont {
         }
         glyphs[key] = g
         return g
+    }
+
+    private var lyricFont: Font? = null
+    private var lyricFontPath: String? = null
+
+    /** 换歌词字体（null = 默认）：同一个文件不重复加载；加载失败就当默认 */
+    fun setLyricFont(file: File?) {
+        val path = file?.absolutePath
+        if (path == lyricFontPath) return
+        lyricFontPath = path
+        lyricFont = if (file == null) null else try {
+            Font.createFont(Font.TRUETYPE_FONT, file).also {
+                DangoLogger.info("Dango Music: lyric font {}", it.fontName)
+            }
+        } catch (e: Throwable) {
+            DangoLogger.warn("Dango Music: could not load lyric font {}: {}", file.name, e.toString())
+            null
+        }
+        // 歌词字形重新画（贴图页里旧的字形留着，不影响）
+        fontLists[LYRIC] = null
+        glyphs.keys.removeAll { it % 4 == LYRIC }
     }
 
     fun width(s: String, size: Float, style: Int): Float {
