@@ -10,10 +10,11 @@ displayName="Dango Music"
 authors="Sorihiko"
 displayURL="https://github.com/Sorihiko/DangoMusic"
 logoFile="assets/dangomusic/icon.png"
-# 纯客户端 mod：服务器不用装，也不检查客户端有没有装
+# 客户端必需；服务器可选（装了之后「一起听歌」走服务器，不用 Firebase 也不用代理）
 displayTest="IGNORE_ALL_VERSION"
 description='''
 A NetEase Cloud Music player inside Minecraft: liquid-glass player, 3D lyrics, song card, Dynamic Island and Listen Together.
+Install it on the server too and Listen Together goes through the Minecraft server instead of Firebase.
 '''
 
 [[dependencies.dangomusic]]
@@ -21,11 +22,11 @@ modId="forge"
 mandatory=true
 versionRange="[47,)"
 ordering="NONE"
-side="CLIENT"
+side="BOTH"
 
 [[dependencies.dangomusic]]
 modId="minecraft"
 mandatory=true
 versionRange="${minecraft_range}"
 ordering="NONE"
-side="CLIENT"
+side="BOTH"
