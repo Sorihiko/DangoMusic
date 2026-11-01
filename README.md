@@ -127,6 +127,8 @@
 ```
 
 不配置也能构建，只是一起听歌不可用；只有连同一个 Firebase 项目的人才能一起听。
+
+不想用 Firebase、想自己架服务器的，可以看第三方的自建服务端 [dango-party-server](https://github.com/Tea-chabai/dango-party-server)（非官方维护）。
 </details>
 
 ## 说明
