@@ -95,7 +95,7 @@ class NeteaseMusicModule : Module() {
     @ModuleValue("Rain", "A little quieter in rain and thunder")
     private val envRain = BooleanValue(true)
 
-    @ModuleValue("Effect strength", "How strong the environment effects are")
+    @ModuleValue("Environment audio strength", "How strong the environment effects are")
     private val envStrength = FloatValue(0f, 1f, 1f, 2)
 
     @ModuleValue("Show sound rays", "Debug: draw the rays used to measure the room, and its numbers")

@@ -339,7 +339,30 @@ Could not remove from Liked songs. Please retry.	没能取消红心，请重试�
 Show sound rays	显示声音射线
 Debug: draw the rays used to measure the room, and its numbers	调试用：把测量房间的射线画出来，并在左上角显示算出的参数
 Lyric font	歌词字体
-Put .ttf / .otf files into config/dangomusic/fonts, then pick one here	把 .ttf / .otf 字体放进 config/dangomusic/fonts 文件夹，再在这里选（要开平滑字体）
 Default	默认
 Fonts folder: 	字体文件夹：
  (put .ttf / .otf files here)	（把 .ttf / .otf 放进去）
+Lyric colors	歌词配色
+Where the lyric and translation colors come from	歌词和翻译用什么颜色
+Custom color	自定义颜色
+Cover color	封面主色
+Cover gradient	封面渐变
+Rainbow	彩虹
+Rainbow speed	彩虹速度
+How fast the rainbow flows across the lyrics	彩虹在歌词上流动的快慢
+Pixel font, smooth font, or a .ttf / .otf font from config/dangomusic/fonts	原版像素字体、平滑字体，或者放进 config/dangomusic/fonts 文件夹的 .ttf / .otf 字体
+Pixel font	像素字体
+Top-left song info	左上角歌曲信息
+Show cover	显示封面
+Bounce amount	弹的幅度
+Custom lyric color	自定义歌词颜色
+Custom translation color	自定义翻译颜色
+Used when Lyric colors is set to Custom color	歌词配色选"自定义颜色"时使用
+Show now playing	显示正在播放
+Environment audio strength	环境音效强度
+Appearance	外观
+Font and colors	字体和颜色
+Position	位置
+Where the lyrics float	歌词在世界里的位置
+Song info	歌曲信息
+Top left, classic style	左上角，原版风格

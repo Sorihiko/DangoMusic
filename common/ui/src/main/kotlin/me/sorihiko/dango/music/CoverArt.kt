@@ -14,7 +14,7 @@ import kotlin.math.min
 
 /**
  * 当前歌曲的封面（左上角 Now playing 用）：后台下载并裁成正方形，渲染线程上传成纹理；
- * 顺便算出封面主色给跳动的小柱子用。
+ * 顺便算出封面主色给跳动的小柱子用，以及几种代表色给歌词配色用。
  */
 class CoverArt {
 
@@ -34,9 +34,14 @@ class CoverArt {
     /** 从封面取出的主色（ARGB，已调亮），左上角跳动小柱子用 */
     var accent: Int = DEFAULT_ACCENT
         private set
+    /** 封面的几种代表色（ARGB，已调亮），最显眼的在前；歌词"封面主色 / 封面渐变"用 */
+    var palette: List<Int> = emptyList()
+        private set
 
     companion object {
         const val DEFAULT_ACCENT = 0xFFF2A7C3.toInt()
+        /** 歌词渐变最多用几种封面颜色 */
+        private const val MAX_COLORS = 4
     }
 
     /** 按封面地址加载（同一首歌只加载一次） */
@@ -66,14 +71,17 @@ class CoverArt {
         location = textures.upload("dango_cover", img)
         shownKey = key
         shownAtNanos = System.nanoTime()
-        accent = try { accentOf(img) } catch (_: Exception) { DEFAULT_ACCENT }
+        val colors = try { paletteOf(img) } catch (_: Exception) { emptyList() }
+        accent = colors.firstOrNull() ?: DEFAULT_ACCENT
+        palette = colors
     }
 
     /**
-     * 封面主色：按色相分 24 格统计，越鲜艳越亮的像素权重越大，取权重最大的那格的平均色，
-     * 再调成足够亮、饱和度适中的颜色（在游戏画面上看得清）。几乎没颜色的封面用浅灰白。
+     * 封面的代表色：按色相分 24 格统计，越鲜艳越亮的像素权重越大（相邻两格一起算，颜色落在格子边界也不会被拆开）。
+     * 第一个是权重最大的那格（主色），之后按权重依次挑和已选颜色色相差得够远的格子，最多 [MAX_COLORS] 个；
+     * 太弱的不要。每个颜色都调成足够亮、饱和度适中（在游戏画面上看得清）。几乎没颜色的封面只给一个浅灰白。
      */
-    private fun accentOf(img: BufferedImage): Int {
+    private fun paletteOf(img: BufferedImage): List<Int> {
         val bins = 24
         val wt = DoubleArray(bins)
         val rs = DoubleArray(bins)
@@ -105,24 +113,34 @@ class CoverArt {
             }
             y += 2
         }
-        if (count == 0 || total / count < 0.04) return 0xFFE8E8F0.toInt()
-        // 相邻两格一起算，避免颜色刚好落在格子边界被拆开
-        var best = 0
-        var bestW = -1.0
-        for (k in 0 until bins) {
-            val w = wt[k] + 0.5 * (wt[(k + 1) % bins] + wt[(k + bins - 1) % bins])
-            if (w > bestW) {
-                bestW = w
-                best = k
+        if (count == 0 || total / count < 0.04) return listOf(0xFFE8E8F0.toInt())
+        val score = DoubleArray(bins) { k -> wt[k] + 0.5 * (wt[(k + 1) % bins] + wt[(k + bins - 1) % bins]) }
+        val picked = ArrayList<Int>()
+        while (picked.size < MAX_COLORS) {
+            var best = -1
+            for (k in 0 until bins) {
+                // 和已经挑中的颜色至少差 3 格（45°），不然两种颜色看起来差不多
+                if (picked.any { p -> min((k - p + bins) % bins, (p - k + bins) % bins) < 3 }) continue
+                if (best < 0 || score[k] > score[best]) best = k
             }
+            if (best < 0 || wt[best] <= 0.0) break
+            if (picked.isNotEmpty() && score[best] < score[picked[0]] * 0.12) break
+            picked += best
         }
-        val w = wt[best].coerceAtLeast(1e-6)
-        val r = (rs[best] / w).toInt().coerceIn(0, 255)
-        val g = (gs[best] / w).toInt().coerceIn(0, 255)
-        val b = (bs[best] / w).toInt().coerceIn(0, 255)
-        java.awt.Color.RGBtoHSB(r, g, b, hsb)
-        val rgb = java.awt.Color.HSBtoRGB(hsb[0], hsb[1].coerceIn(0.35f, 0.75f), hsb[2].coerceAtLeast(0.92f))
-        return rgb or (0xFF shl 24)
+        val colors = picked.map { k ->
+            val w = wt[k].coerceAtLeast(1e-6)
+            val r = (rs[k] / w).toInt().coerceIn(0, 255)
+            val g = (gs[k] / w).toInt().coerceIn(0, 255)
+            val b = (bs[k] / w).toInt().coerceIn(0, 255)
+            java.awt.Color.RGBtoHSB(r, g, b, hsb)
+            java.awt.Color.HSBtoRGB(hsb[0], hsb[1].coerceIn(0.35f, 0.75f), hsb[2].coerceAtLeast(0.92f)) or (0xFF shl 24)
+        }
+        // 只有一种颜色时补一个同色相的浅色，渐变才看得出来
+        if (colors.size == 1) {
+            java.awt.Color.RGBtoHSB((colors[0] shr 16) and 0xFF, (colors[0] shr 8) and 0xFF, colors[0] and 0xFF, hsb)
+            return colors + (java.awt.Color.HSBtoRGB(hsb[0], hsb[1] * 0.35f, 1f) or (0xFF shl 24))
+        }
+        return colors
     }
 
     fun clear() {
@@ -131,6 +149,7 @@ class CoverArt {
         shownKey = null
         requestedKey = null
         pendingImage = null
+        palette = emptyList()
     }
 
     // ---------------------------------------------------------------- 工具

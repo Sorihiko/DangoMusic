@@ -45,7 +45,7 @@ class DynamicIslandModule : Module() {
     @ModuleValue("Liquid glass", "Liquid glass background; off is a solid black pill")
     private val glass = BooleanValue(true)
 
-    @ModuleValue("Music", "Show what the built-in player is playing")
+    @ModuleValue("Show now playing", "Show what the built-in player is playing")
     private val showMusic = BooleanValue(true)
 
     @ModuleValue("Song notify", "Expand to show the song on track change or pause")
