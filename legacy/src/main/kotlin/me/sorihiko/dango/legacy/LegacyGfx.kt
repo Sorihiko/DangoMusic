@@ -19,12 +19,15 @@ import net.minecraft.client.gui.Gui
 import net.minecraft.client.gui.ScaledResolution
 import net.minecraft.client.renderer.GlStateManager
 import net.minecraft.client.renderer.OpenGlHelper
+import org.lwjgl.BufferUtils
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL13
 import org.lwjgl.opengl.GL14
 import org.lwjgl.opengl.GL20
 
 import kotlin.math.max
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
 /** 1.8.9 的绘图实现：OpenGL 固定管线 + 原版的 FontRenderer / TextureManager */
 object LegacyGfx : Gfx {
@@ -217,6 +220,29 @@ object LegacyWorld : WorldView {
     override val cameraX: Double get() = mc.renderManager.viewerPosX
     override val cameraY: Double get() = mc.renderManager.viewerPosY
     override val cameraZ: Double get() = mc.renderManager.viewerPosZ
+
+    private val cameraMatrix = BufferUtils.createFloatBuffer(16)
+
+    private fun readCameraMatrix() {
+        cameraMatrix.clear()
+        GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, cameraMatrix)
+    }
+
+    // 睡觉时镜头会随床的方向旋转，RenderManager 的朝向不一定与实际镜头一致，因此从当前渲染矩阵读取。
+    // 当前模型视图矩阵按列存储，第三行的前三个元素位于索引 2、6、10，组成镜头后方的方向向量；取反即为观察方向。
+    override val cameraYaw: Float get() {
+        readCameraMatrix()
+        val backX = cameraMatrix.get(2).toDouble()
+        val backZ = cameraMatrix.get(10).toDouble()
+        return Math.toDegrees(atan2(backX, -backZ)).toFloat()
+    }
+    override val cameraPitch: Float get() {
+        readCameraMatrix()
+        val backX = cameraMatrix.get(2).toDouble()
+        val backY = cameraMatrix.get(6).toDouble()
+        val backZ = cameraMatrix.get(10).toDouble()
+        return Math.toDegrees(atan2(backY, sqrt(backX * backX + backZ * backZ))).toFloat()
+    }
 
     override fun begin() {
         LegacyGfx.prepareTextState()

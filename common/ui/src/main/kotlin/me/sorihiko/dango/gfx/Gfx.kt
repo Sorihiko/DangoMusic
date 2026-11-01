@@ -136,6 +136,10 @@ interface WorldView {
     val cameraY: Double
     val cameraZ: Double
 
+    /** 镜头的水平转角和俯仰角，单位为度，遵循Minecraft的角度约定；睡觉等状态下可能与玩家朝向不同。 */
+    val cameraYaw: Float
+    val cameraPitch: Float
+
     /** 开始画世界里的文字：关深度测试、设好混合和贴图状态 */
     fun begin()
 

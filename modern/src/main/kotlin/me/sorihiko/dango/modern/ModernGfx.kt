@@ -246,6 +246,8 @@ object ModernWorld : WorldView {
     override val cameraX: Double get() = camera.x
     override val cameraY: Double get() = camera.y
     override val cameraZ: Double get() = camera.z
+    override val cameraYaw: Float get() = McCompat.cameraYRot()
+    override val cameraPitch: Float get() = McCompat.cameraXRot()
 
     private fun worldState() {
         Gl.blend(true)
