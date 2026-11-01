@@ -45,7 +45,13 @@ object PartyProxy {
     /** 系统代理连不上后，这段时间内直接直连，不再每次都先撞一下代理 */
     private const val PROXY_DOWN_MS = 30_000L
 
-    @Volatile var mode = Mode.SYSTEM
+    /**
+     * 默认走 DIRECT。
+     *
+     * 这个 mod 的 Direct 已经改成「走当前 MC 服务器的中转，服务器没装再退回 Firebase 直连」，
+     * 所以它才是装上就该用的那个；SYSTEM/MANUAL 只在服务器没有、又确实需要代理连 Firebase 时才用。
+     */
+    @Volatile var mode = Mode.DIRECT
         private set
     @Volatile var manualAddress = ""
         private set
@@ -75,7 +81,7 @@ object PartyProxy {
             if (!f.isFile) return
             val o = JsonParser().parse(f.readText(StandardCharsets.UTF_8)).asJsonObject
             val key = o.get("mode")?.asString ?: ""
-            mode = Mode.values().firstOrNull { it.key == key } ?: Mode.SYSTEM
+            mode = Mode.values().firstOrNull { it.key == key } ?: Mode.DIRECT   // 存档里没有就按 Direct（走服务器）
             manualAddress = (o.get("address")?.asString ?: "").trim().take(200)
         } catch (_: Exception) {
         }

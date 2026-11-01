@@ -99,12 +99,26 @@ object MusicPlayer {
 
     private val party get() = me.sorihiko.dango.party.ListenParty
 
+    /**
+     * 一起听的成员在房主关掉「允许成员控制」后，不能自己改播放状态。
+     * 返回 true 表示这次操作要拦掉（顺手给一行提示）。
+     * 拦掉后播放器不动，跟随逻辑会把进度对齐回房主那边。
+     */
+    private fun blockedByHost(): Boolean {
+        val p = party
+        if (p.role != me.sorihiko.dango.party.ListenParty.Role.MEMBER) return false
+        if (p.canControl) return false
+        hint("The host turned off member control")
+        return true
+    }
+
     @JvmOverloads fun playQueue(tracks: List<NeteaseTrack>, startIndex: Int, radio: (() -> List<NeteaseTrack>)? = null) {
-        // 一起听的成员：交给房主去放
+        // 一起听的成员：整列交给房主（只发单首的话，成员点「播放全部」只会过去第一首）
         if (party.canControl) {
-            if (tracks.isNotEmpty()) party.requestPlay(tracks[Math.floorMod(startIndex, tracks.size)])
+            party.requestPlayList(tracks, startIndex)
             return
         }
+        if (blockedByHost()) return
         if (tracks.isNotEmpty() && !canPlay(tracks[Math.floorMod(startIndex, tracks.size)])) return
         queue = tracks
         this.radio = radio
@@ -117,6 +131,7 @@ object MusicPlayer {
         val idx = ((i % q.size) + q.size) % q.size
         val track = q[idx]
         if (party.canControl) return party.requestPlay(track)
+        if (blockedByHost()) return
         if (!canPlay(track)) return
         index = idx
         val gen = ++generation
@@ -171,12 +186,18 @@ object MusicPlayer {
     /**
      * 一起听：跟随房主播放某首歌。
      * 起始位置在下载完成、真正开始播放前才计算（下载要好几秒，提前算会落后）。
+     * [partyQueue] 是房主的整个播放列表：成员据此看到完整的「正在播放」，点下一首也对得上。
      */
-    fun playTrackAt(track: NeteaseTrack, startAt: () -> Long, paused: Boolean) {
+    fun playTrackAt(track: NeteaseTrack, startAt: () -> Long, paused: Boolean, partyQueue: List<NeteaseTrack>? = null) {
         if (!canPlay(track)) return
-        queue = listOf(track)
+        if (partyQueue != null && partyQueue.size > 1) {
+            queue = partyQueue
+            index = partyQueue.indexOfFirst { it.key == track.key }.coerceAtLeast(0)
+        } else {
+            queue = listOf(track)
+            index = 0
+        }
         radio = null
-        index = 0
         val gen = ++generation
         stopLine()
         audio = null
@@ -184,6 +205,98 @@ object MusicPlayer {
         state = State.LOADING
         message = "加载中…"
         loader.execute { load(gen, track, startAt, paused) }
+    }
+
+    /**
+     * 一起听：房主的播放列表变了（加歌 / 删歌 / 换列表），把本地队列对齐。
+     * 只改 queue 和 index，不动正在播放的这首和播放位置。
+     */
+    fun applyPartyQueue(tracks: List<NeteaseTrack>, currentKey: String) {
+        if (tracks.isEmpty()) return
+        val at = tracks.indexOfFirst { it.key == currentKey }
+        queue = tracks
+        if (at >= 0) index = at else if (index >= tracks.size) index = tracks.size - 1
+    }
+
+    /**
+     * 「正在播放」列表里删掉一首。删的是正在放的这首就跳下一首，队列空了就停。
+     * 只影响本地队列，不会把歌从歌单里删掉。
+     */
+    fun removeFromQueue(position: Int) {
+        val q = queue
+        if (position !in q.indices) return
+        val list = ArrayList(q)
+        list.removeAt(position)
+        queue = list
+        when {
+            list.isEmpty() -> {
+                index = -1
+                stop()
+            }
+            position < index -> index -= 1
+            position == index -> {
+                val next = index.coerceAtMost(list.size - 1)
+                index = next
+                playIndex(next)
+            }
+            index >= list.size -> index = list.size - 1
+        }
+    }
+
+    /** 清空整个播放队列并停止播放（「正在播放」页的「清空列表」按钮）。 */
+    fun clearQueue() {
+        queue = emptyList()
+        index = -1
+        stop()
+    }
+
+    /** 在播放条上显示一句提示（不打断播放，下一首 / 下一次加载时被覆盖） */
+    fun hint(text: String) {
+        message = text
+    }
+
+    // ---------------------------------------------------------------- 声音淡入淡出
+
+    /** 暂停 / 继续 / 切歌时把音量平滑地推上去或拉下来，避免"啪"的一声 */
+    @Volatile var fadeEnabled = true
+    /** 淡入淡出时长（毫秒），0 表示瞬间 */
+    @Volatile var fadeMs = 300
+
+    /** 连点暂停时，只让最后一次渐变生效，避免几个线程来回抢声卡音量 */
+    private val fadeToken = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * 把音量渐变到 [target]（1 = 正常，0 = 静音）。
+     * 在后台线程做，不卡主线程。连点暂停时，旧的那次渐变会自己放弃。
+     */
+    private fun fadeAsync(target: Float, onDone: (() -> Unit)? = null) {
+        val out = line
+        val token = fadeToken.incrementAndGet()
+        if (out == null) {
+            onDone?.invoke()
+            return
+        }
+        if (!fadeEnabled || fadeMs <= 0) {
+            out.setVolume(volume * target)
+            onDone?.invoke()
+            return
+        }
+        Thread({
+            try {
+                val steps = 12
+                val stepMs = (fadeMs / steps).coerceAtLeast(4)
+                val from = if (target == 0f) 1f else 0f
+                for (i in 1..steps) {
+                    if (token != fadeToken.get()) return@Thread
+                    out.setVolume(volume * (from + (target - from) * i / steps))
+                    Thread.sleep(stepMs.toLong())
+                }
+                out.setVolume(volume * target)
+            } catch (_: Exception) {
+            } finally {
+                if (token == fadeToken.get()) onDone?.invoke()
+            }
+        }, "Dango-Fade").apply { isDaemon = true }.start()
     }
 
     /** 一起听：房主放成员点的歌，插在当前这首后面，放完接着原来的队列 */
@@ -211,6 +324,7 @@ object MusicPlayer {
 
     fun next() {
         if (party.canControl) return party.requestNext()
+        if (blockedByHost()) return
         val q = queue
         if (q.isEmpty()) return
         // 电台按顺序往下放；放到最后一首时先要几首新的再切
@@ -224,6 +338,7 @@ object MusicPlayer {
 
     fun prev() {
         if (party.canControl) return party.requestPrev()
+        if (blockedByHost()) return
         if (positionMs > 3000) {
             seek(0)
             return
@@ -242,12 +357,17 @@ object MusicPlayer {
         if (party.canControl && (state == State.PLAYING || state == State.PAUSED)) {
             party.requestState(if (state == State.PLAYING) me.sorihiko.dango.party.PartyRequest.PAUSE
                 else me.sorihiko.dango.party.PartyRequest.RESUME, positionMs)
+        } else if (blockedByHost()) {
+            return
         }
         when (state) {
             State.PLAYING -> {
-                pausedAtMs = positionMs
-                state = State.PAUSED
-                line?.stop()
+                // 先淡出再停：状态先留着 PLAYING，解码线程才会继续写数据、让渐变生效
+                fadeAsync(0f) {
+                    pausedAtMs = positionMs
+                    state = State.PAUSED
+                    line?.stop()
+                }
             }
             State.PAUSED -> {
                 val l = line
@@ -255,6 +375,7 @@ object MusicPlayer {
                     // 声卡输出只是停住了，接着放就行；解码线程看到状态变回 PLAYING 会继续写数据
                     state = State.PLAYING
                     l.start()
+                    fadeAsync(1f)
                 } else {
                     seekLocal(pausedAtMs)
                 }
@@ -265,7 +386,11 @@ object MusicPlayer {
 
     fun seek(ms: Long) {
         if (audio == null) return
-        if (party.canControl) party.requestState(me.sorihiko.dango.party.PartyRequest.SEEK, ms.coerceIn(0L, max(0L, durationMs - 500)))
+        if (party.canControl) {
+            party.requestState(me.sorihiko.dango.party.PartyRequest.SEEK, ms.coerceIn(0L, max(0L, durationMs - 500)))
+        } else if (blockedByHost()) {
+            return
+        }
         seekLocal(ms)
     }
 
@@ -566,6 +691,16 @@ object MusicPlayer {
         val l = line
         line = null
         try {
+            // 切歌：快速淡出再关，避免"啪"的一声。用四分之一时长，最多几十毫秒
+            if (l != null && l.isRunning && fadeEnabled && fadeMs > 0) {
+                val steps = 6
+                val stepMs = (fadeMs / 4 / steps).coerceAtLeast(3)
+                for (i in steps downTo 1) {
+                    l.setVolume(volume * i / steps)
+                    Thread.sleep(stepMs.toLong())
+                    if (!l.isRunning) break
+                }
+            }
             l?.stop()
             l?.flush()
             l?.close()

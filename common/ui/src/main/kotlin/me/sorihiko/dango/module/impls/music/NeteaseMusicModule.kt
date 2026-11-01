@@ -46,6 +46,12 @@ class NeteaseMusicModule : Module() {
     @ModuleValue("Volume", "Playback volume")
     private val volume = FloatValue(0f, 1f, 0.2f, 2)
 
+    @ModuleValue("Fade", "Fade the volume in and out when pausing, resuming and changing tracks")
+    private val fade = BooleanValue(true)
+
+    @ModuleValue("Fade time", "How long the fade takes (milliseconds)")
+    private val fadeMs = FloatValue(0f, 1000f, 300f, 0)
+
     @ModuleValue("Language", "Choose the player interface language")
     // -1：尚未根据游戏语言初始化。早期 Fabric 入口处 Options 可能仍为空。
     private val language = IntValue(-1, 1, -1)
@@ -281,6 +287,10 @@ class NeteaseMusicModule : Module() {
         MusicPlayer.repeatOne = repeatOne.get()
 
         MusicPlayer.normalize = normalize.get()
+
+        // 淡入淡出：暂停 / 继续 / 切歌时用，时长由设置里的滑条决定
+        MusicPlayer.fadeEnabled = fade.get()
+        MusicPlayer.fadeMs = fadeMs.value.toInt()
 
         // 环境音效：设置和玩家周围的环境交给解码线程
         EnvironmentAudio.enabled = envAudio.get()

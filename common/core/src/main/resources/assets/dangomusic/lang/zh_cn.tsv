@@ -366,3 +366,25 @@ Position	位置
 Where the lyrics float	歌词在世界里的位置
 Song info	歌曲信息
 Top left, classic style	左上角，原版风格
+Remove	删除
+Already in the queue	已在队列里，请勿重复添加
+This server does not have Dango Music. Listen Together needs it on the server	这个服务器没有安装 Dango Music；一起听歌需要服务端也安装
+Server runs a different Dango Music version. Update both sides	服务器上的 Dango Music 版本和本地不一致，请把两端更新到同一版本
+The server did not answer. Check your connection	服务器没有回应，请检查连接
+The server refused the request	服务器拒绝了请求
+Listen Together is not available here. The server needs Dango Music, or set up firebase.properties	当前服务器不能一起听歌：需要服务端安装 Dango Music，或者自己配置 firebase.properties
+Using this server	走当前服务器
+No proxy needed. Rooms live on the server and are cleared when it restarts.	不需要代理；房间数据存在服务器内存里，重启服务器后需要重新建房
+Disconnected from the server	已断开连接
+Unable to reach the server: %s	连不上服务器（%s）
+Server	服务器
+Through this server · no Firebase and no proxy needed	通过当前服务器中转：不用 Firebase，也不用代理
+This server does not run Dango Music, so it falls back to a direct Firebase connection	当前服务器没装 Dango Music，已退回直连 Firebase
+This server supports Listen Together. Switch the connection to "Server".	这个服务器支持一起听歌。请把连接方式切换到「Server」。
+This server cannot do Listen Together: install Dango Music on the server	当前服务器不能一起听歌：需要服务端安装 Dango Music
+The host turned off member control	房主已关闭成员控制
+Clear queue	清空列表
+Fade	淡入淡出
+Fade the volume in and out when pausing, resuming and changing tracks	暂停、继续、切歌时让音量平滑过渡，避免爆音
+Fade time	淡入淡出时长
+How long the fade takes (milliseconds)	淡入淡出用多长时间（毫秒）

@@ -4,9 +4,11 @@ import me.sorihiko.dango.i18n.I18n
 
 import me.sorihiko.dango.DangoClient
 import me.sorihiko.dango.music.MusicScreen
+import me.sorihiko.dango.party.Firebase
 import me.sorihiko.dango.party.ListenParty
 import me.sorihiko.dango.party.PartyProxy
 import me.sorihiko.dango.party.PartyTransport
+import me.sorihiko.dango.party.ServerTransport
 import me.sorihiko.dango.platform.Keys
 import me.sorihiko.dango.ui.LayoutBounds
 import me.sorihiko.dango.ui.ShapeStyle
@@ -47,9 +49,12 @@ internal class PartyPage(private val screen: MusicScreen) {
         ui.text(sub, x, y + 30f, 11f, Theme.TEXT_SECONDARY, Theme.FONT_SEMIBOLD)
         y += 66f
 
-        if (!ListenParty.transport.configured) {
-            ui.text(I18n.text("Listen Together is not set up (missing firebase.properties)"), x, y, 12f, RED, Theme.FONT_MEDIUM)
-            return
+        // 服务器明明支持，但当前连接方式没选它 —— 直接提醒，否则很容易以为功能坏了
+        if (ListenParty.transport === Firebase &&
+            ServerTransport.configured) {
+            ui.text(I18n.text("This server supports Listen Together. Switch the connection to \"Server\"."),
+                x, y, 11f, RED, Theme.FONT_MEDIUM)
+            y += 20f
         }
 
         if (role == ListenParty.Role.NONE) {
@@ -76,6 +81,7 @@ internal class PartyPage(private val screen: MusicScreen) {
                 ListenParty.join(codeInput)
             }
             y += 56f
+            // 界面回到原版：始终显示连接方式。Direct 现在代表走当前服务器的中转
             y = drawConnection(x, y)
         } else {
             ui.text(I18n.text("ROOM CODE"), x, y, 10f, Theme.TEXT_TERTIARY, Theme.FONT_SEMIBOLD)
@@ -117,7 +123,7 @@ internal class PartyPage(private val screen: MusicScreen) {
             }
             y += 50f
             if (role == ListenParty.Role.HOST) {
-                // 允许成员切歌 / 拖进度 / 暂停（房主不用确认，自动执行）
+                // 允许成员切歌 / 拖进度 / 暂停
                 val on = ListenParty.memberControl == true
                 val sw = LayoutBounds(x, y, 40f, 22f)
                 ui.toggleSwitch(sw, on, area, "party.memberControl") { ListenParty.setMemberControl(!on) }
@@ -126,8 +132,22 @@ internal class PartyPage(private val screen: MusicScreen) {
             }
         }
 
+        // 不可用时只在最下面提示，不拦界面
+        if (!ListenParty.transport.configured) {
+            val msg = when {
+                ListenParty.transport === ServerTransport ->
+                    I18n.text("Server runs a different Dango Music version. Update both sides")
+                PartyProxy.currentMode() == PartyProxy.Mode.DIRECT ->
+                    I18n.text("This server cannot do Listen Together: install Dango Music on the server")
+                else -> null
+            }
+            if (msg != null) {
+                ui.text(msg, x, y, 11f, RED, Theme.FONT_MEDIUM)
+                y += 18f
+            }
+        }
+
         val st = I18n.message(ListenParty.status)
-        // 连不上时的提示比较长，最多折成两行
         ui.wrap2(st, (area.right - x).coerceAtMost(560f), 12f, Theme.FONT_MEDIUM).forEachIndexed { i, line ->
             ui.text(line, x, y + i * 16f, 12f, RED, Theme.FONT_MEDIUM)
         }
@@ -136,7 +156,7 @@ internal class PartyPage(private val screen: MusicScreen) {
     }
 
     /**
-     * 连接方式（只管一起听歌）：跟随系统代理 / 直连 / 手动。不在房间里时才能改，改了下一个请求就生效。
+     * 连接方式（只管一起听歌）：跟随系统代理 / 服务器 / 手动。不在房间里时才能改，改了下一个请求就生效。
      * 系统代理在后台检测，这里只显示缓存的结果。
      */
     private fun drawConnection(x: Float, top: Float): Float {
@@ -146,8 +166,9 @@ internal class PartyPage(private val screen: MusicScreen) {
         val mode = PartyProxy.currentMode()
         var px = x
         val options = listOf(
+            // Server 放第一位：它现在是默认项（走当前 MC 服务器的中转），服务器没装再退回 Firebase 直连
+            PartyProxy.Mode.DIRECT to I18n.text("Server"),
             PartyProxy.Mode.SYSTEM to I18n.text("System proxy"),
-            PartyProxy.Mode.DIRECT to I18n.text("Direct"),
             PartyProxy.Mode.MANUAL to I18n.text("Manual"),
         )
         for ((m, label) in options) {
@@ -170,7 +191,10 @@ internal class PartyPage(private val screen: MusicScreen) {
         var note = ""
         var warn = false
         when (mode) {
-            PartyProxy.Mode.DIRECT -> note = I18n.text("Connecting directly")
+            // Direct 现在是走服务器
+            PartyProxy.Mode.DIRECT -> note = if (ServerTransport.configured)
+                I18n.text("Through this server · no Firebase and no proxy needed")
+            else I18n.text("This server does not run Dango Music, so it falls back to a direct Firebase connection")
             PartyProxy.Mode.SYSTEM -> {
                 val info = PartyProxy.systemInfo()
                 val route = info?.route

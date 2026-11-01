@@ -18,6 +18,12 @@ class PartyRequest(
     val at: Long,
     /** [PLAY]：要放的歌 */
     val track: NeteaseTrack?,
+    /**
+     * [PLAY] 且来自「播放全部」时的整个列表；单曲点播时为 null。
+     * 房主拿到它就用 [me.sorihiko.dango.music.MusicPlayer.playQueue] 整列替换，
+     * 而不是像单曲那样只插一首。
+     */
+    val tracks: List<NeteaseTrack>? = null,
 ) {
     companion object {
         const val PLAY = "play"
@@ -30,6 +36,9 @@ class PartyRequest(
         /** 太旧的请求（比如房主刚重连、读到之前留下的）不再执行 */
         const val MAX_AGE_MS = 15_000L
 
+        /** 「播放全部」最多带多少首，和队列上限保持一致 */
+        const val MAX_LIST = 200
+
         private val OPS = setOf(PLAY, NEXT, PREV, PAUSE, RESUME, SEEK)
 
         fun write(r: PartyRequest, serverTimestamp: com.google.gson.JsonElement): JsonObject =
@@ -40,6 +49,13 @@ class PartyRequest(
                 addProperty("op", r.op)
                 addProperty("pos", r.pos)
                 add("at", serverTimestamp)
+                // 「播放全部」：把整个列表带上，房主据此整列替换队列
+                val list = r.tracks
+                if (list != null && list.isNotEmpty()) {
+                    val arr = com.google.gson.JsonArray()
+                    list.take(MAX_LIST).forEach { arr.add(PartyTrackCodec.write(it)) }
+                    add("tracks", arr)
+                }
             }
 
         fun read(o: JsonObject?): PartyRequest? {
@@ -49,9 +65,13 @@ class PartyRequest(
                 if (op !in OPS) return null
                 val id = o.get("id")?.asString ?: return null
                 val track = if (op == PLAY) PartyTrackCodec.read(o) ?: return null else null
+                val tracks = if (op == PLAY) (o.get("tracks") as? com.google.gson.JsonArray)
+                    ?.takeIf { it.size() > 1 }
+                    ?.mapNotNull { if (it.isJsonObject) PartyTrackCodec.read(it.asJsonObject) else null }
+                else null
                 PartyRequest(
                     id.take(64), o.get("by")?.asString ?: return null, (o.get("byName")?.asString ?: "?").take(64), op,
-                    (o.get("pos")?.asLong ?: 0L).coerceAtLeast(0L), o.get("at")?.asLong ?: 0L, track,
+                    (o.get("pos")?.asLong ?: 0L).coerceAtLeast(0L), o.get("at")?.asLong ?: 0L, track, tracks,
                 )
             } catch (_: Exception) {
                 null

@@ -4,9 +4,12 @@ import me.sorihiko.dango.modern.DanceRender;
 import me.sorihiko.dango.modern.ModernDango;
 import me.sorihiko.dango.music.Dance;
 import me.sorihiko.dango.modern.ModernKeyBindings;
+import me.sorihiko.dango.party.ListenParty;
+import me.sorihiko.dango.platform.PartyLinks;
 
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
@@ -27,7 +30,9 @@ import net.minecraftforge.fml.loading.FMLEnvironment;
 public class DangoMusicForge {
 
     public DangoMusicForge() {
-        // 纯客户端 mod：在服务器上什么都不做
+        // 一起听歌的服务器通道：客户端和专用服务器都要注册（通道本身是可选的，原版客户端照常进服）
+        PartyNetwork.register();
+        // 客户端功能只在客户端初始化；专用服务器只跑一起听歌的房间数据
         if (FMLEnvironment.dist == Dist.CLIENT) {
             Client.init();
         }
@@ -36,6 +41,9 @@ public class DangoMusicForge {
     /** 单独放一个类：服务器上不会加载到这些客户端类 */
     private static final class Client {
         static void init() {
+            // 把「一起听走服务器」的通道交给共用代码；不设置的话仍然走 Firebase
+            PartyLinks.INSTANCE.setLink(ForgePartyLink.INSTANCE);
+            PartyNetwork.setClientSink(ForgePartyLink.INSTANCE);
             FMLJavaModLoadingContext.get().getModEventBus().addListener(Client::onRegisterKeys);
             ModernDango.start();
             MinecraftForge.EVENT_BUS.addListener(Client::onClientTick);
@@ -44,6 +52,31 @@ public class DangoMusicForge {
             MinecraftForge.EVENT_BUS.addListener(Client::onOverlayDrawn);
             MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, Client::onRenderLivingPre);
             MinecraftForge.EVENT_BUS.addListener(EventPriority.LOWEST, Client::onRenderLivingPost);
+            MinecraftForge.EVENT_BUS.addListener(Client::onLoggingIn);
+            MinecraftForge.EVENT_BUS.addListener(Client::onLoggingOut);
+        }
+
+        /** 连上服务器：拿到自己的 UUID（房间里的身份） */
+        private static void onLoggingIn(ClientPlayerNetworkEvent.LoggingIn event) {
+            // 这里不能 reset：服务器的 InfoMsg 可能已经先到了，清空会让界面误判成「服务器不支持一起听」。
+            // 断线时 onLoggingOut 已经 reset 过了，换服务器也一定会先断开。
+            try {
+                ForgePartyLink.INSTANCE.setPlayerId(event.getPlayer().getStringUUID());
+            } catch (Throwable ignored) {
+                // 单人存档刚开始时拿不到也无所谓，收到服务器信息后会再试
+            }
+            ListenParty.INSTANCE.onSessionStarted();
+        }
+
+        /** 退服 / 退存档：服务端已经把我们移出房间，这里退出房间并停止播放 */
+        private static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+            try {
+                ListenParty.INSTANCE.onSessionEnded();
+            } catch (Throwable t) {
+                org.apache.logging.log4j.LogManager.getLogger("DangoMusic")
+                        .warn("Listen Together: leaving session failed: {}", t.toString());
+            }
+            ForgePartyLink.INSTANCE.reset();
         }
 
         private static void onMenuDraw(net.minecraftforge.client.event.ScreenEvent.Render.Post event) {

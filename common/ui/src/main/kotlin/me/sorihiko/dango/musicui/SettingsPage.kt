@@ -268,7 +268,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
         val updates = player.take(listOf("checkUpdates"))
         val environment = player.take(listOf("envAudio", "envRain", "envStrength", "envRays"))
         val music = listOf(
-            Group("Player", "Playback", player.m, false, player.take(listOf("volume", "normalize", "language"))),
+            Group("Player", "Playback", player.m, false, player.take(listOf("volume", "fade", "fadeMs", "normalize", "language"))),
             Group("Environment audio", "Sound around you", player.m, false, environment),
             Group("Hotkeys", "Click, then press a key · Backspace clears", player.m, false, player.take()),
             Group("Song card", "Overlay", card.m, true, card.take()),

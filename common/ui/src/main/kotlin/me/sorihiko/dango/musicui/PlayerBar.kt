@@ -8,6 +8,7 @@ import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.MusicScreen
 import me.sorihiko.dango.music.MusicSource
 import me.sorihiko.dango.music.NeteaseApi
+import me.sorihiko.dango.party.ListenParty
 import me.sorihiko.dango.ui.LayoutBounds
 import me.sorihiko.dango.ui.ShapeStyle
 import me.sorihiko.dango.ui.Theme
@@ -145,9 +146,26 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         ctx.drawShape(LayoutBounds(knobX - 5f, volRect.y - 3f, 10f, 10f), ShapeStyle(Theme.TEXT_PRIMARY, 5f))
 
         val shB = LayoutBounds(volRect.x - 72f, vy - 14f, 32f, 28f)
-        toggleButton(shB, vy, MusicPlayer.shuffle, shuffleA, "⇄") { module.toggleShuffle() }
+        toggleButton(shB, vy, MusicPlayer.shuffle, shuffleA, "⇄") {
+            if (blockedAsMember()) return@toggleButton
+            module.toggleShuffle()
+        }
         val repeatB = LayoutBounds(shB.x - 40f, vy - 14f, 32f, 28f)
-        toggleButton(repeatB, vy, MusicPlayer.repeatOne, repeatA, "↻") { module.toggleRepeatOne() }
+        toggleButton(repeatB, vy, MusicPlayer.repeatOne, repeatA, "↻") {
+            if (blockedAsMember()) return@toggleButton
+            module.toggleRepeatOne()
+        }
+    }
+
+    /**
+     * 一起听的成员被房主关掉控制后，右下角的随机 / 单曲循环也不该再改。
+     * 这两个开关只影响本地，但留着能点会让人以为房主的开关没生效。
+     */
+    private fun blockedAsMember(): Boolean {
+        val p = ListenParty
+        if (p.role != ListenParty.Role.MEMBER || p.canControl) return false
+        MusicPlayer.hint("The host turned off member control")
+        return true
     }
 
     /** 圆形按钮的底：悬停时渐显、跟着点击回弹；返回当前的缩放，图标按它缩放 */

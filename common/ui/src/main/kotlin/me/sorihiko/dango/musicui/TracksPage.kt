@@ -10,6 +10,7 @@ import me.sorihiko.dango.music.MusicSource
 import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.NeteaseApi
 import me.sorihiko.dango.music.NeteaseTrack
+import me.sorihiko.dango.party.ListenParty
 import me.sorihiko.dango.platform.Keys
 import me.sorihiko.dango.ui.LayoutBounds
 import me.sorihiko.dango.ui.ShapeStyle
@@ -239,6 +240,16 @@ internal class TracksPage(private val screen: MusicScreen) {
     private var loadKey = -1L
     private var loadBar = Spring(160f, 24f)
 
+    /**
+     * 「正在播放」页的删除 / 清空按钮对谁可见：
+     * 房主、不在房间的人、被房主允许控制的成员。
+     */
+    private fun canManageQueue(): Boolean =
+        ScreenState.page == Page.QUEUE && when (ListenParty.role) {
+            ListenParty.Role.MEMBER -> ListenParty.canControl
+            else -> true
+        }
+
     /** 标题区，返回它的高度 */
     private fun drawHeader(page: LayoutBounds, title: String, tracks: List<NeteaseTrack>?): Float {
         val ctx = ui.ctx
@@ -340,6 +351,18 @@ internal class TracksPage(private val screen: MusicScreen) {
             ui.text(label, lb.x + 25f, lb.y + 8f, 11f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
             ui.hits += lb to { locateCurrent() }
             rightX = lb.x - 10f
+        }
+
+        // 清空当前播放列表：和删除键一样动态，房主或房主允许控制的成员才看得到
+        if (canManageQueue()) {
+            val label = I18n.text("Clear queue")
+            val cw = ui.width(label, 11f, Theme.FONT_MEDIUM) + 34f
+            val cb = LayoutBounds(rightX - cw, y + 4f, cw, 26f)
+            ui.card(cb, if (ui.hover(cb)) Theme.CARD_HOVER else Theme.CARD, 13f)
+            ui.icon("✕", cb.x + 14f, cb.y + 13f, 11f, RED)
+            ui.text(label, cb.x + 25f, cb.y + 8f, 11f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
+            ui.hits += cb to { MusicPlayer.clearQueue() }
+            rightX = cb.x - 10f
         }
 
         // 歌单内筛选框（按歌名 / 歌手，输入即筛选）
@@ -453,6 +476,10 @@ internal class TracksPage(private val screen: MusicScreen) {
         drawScrollbar(LayoutBounds(list.right - 9f, body.y + 2f, 5f, rows * rowH - 8f), tracks.size, rows)
         val flash = (1f - (System.currentTimeMillis() - flashAt) / 1400f).coerceIn(0f, 1f)
         val playing = MusicPlayer.current
+        // 「正在播放」页每行右边有「删除」：只从队列里去掉，不动歌单。
+        // 可见性和顶部「清空」一致，见 [canManageQueue]。
+        val canRemove = canManageQueue()
+        val removeW = if (canRemove) 50f else 0f
         val first = kotlin.math.floor(listPos).toInt()
         val frac = listPos - first
         val clipArea = LayoutBounds(body.x - 4f, body.y - 2f, body.width + 8f, rows * rowH)
@@ -481,15 +508,29 @@ internal class TracksPage(private val screen: MusicScreen) {
                 ui.drawCover(thumb, CoverCache.trackRounded(t, 0.15f), 6f)
                 val tx = thumb.right + 12f
                 val durW = 44f
-                val avail = row.right - durW - 12f - tx
+                val avail = row.right - durW - 12f - tx - removeW
                 ui.text(ui.trim(t.name, avail, 13f), tx, row.y + 7f, 13f, if (isCur) RED else Theme.TEXT_PRIMARY)
                 ui.text(ui.trim(t.artists.joinToString(" / "), avail, 11f), tx, row.y + 23f, 11f, Theme.TEXT_SECONDARY)
                 val d = fmtTime(t.durationMs)
-                ui.text(d, row.right - 12f - ui.width(d, 11f), row.y + 15f, 11f, Theme.TEXT_TERTIARY)
+                ui.text(d, row.right - 12f - ui.width(d, 11f) - removeW, row.y + 15f, 11f, Theme.TEXT_TERTIARY)
+                if (canRemove) drawRemoveButton(row, i, clipArea)
                 ui.hits += row.intersect(clipArea) to { playFrom(all, i) }
             }
         }
         ui.endClip()
+    }
+
+    /**
+     * 「删除」两个字：只从播放队列里去掉这一首。点击区域先登记，
+     * 否则整行的「播放这首」会先命中（hits 是从前往后匹配的）。
+     */
+    private fun drawRemoveButton(row: LayoutBounds, position: Int, clip: LayoutBounds) {
+        val label = I18n.text("Remove")
+        val textWidth = ui.width(label, 10f, Theme.FONT_SEMIBOLD)
+        val x = row.right - 12f - textWidth
+        val hit = LayoutBounds(x - 5f, row.y + 8f, textWidth + 10f, row.height - 16f)
+        ui.text(label, x, row.y + 15f, 10f, if (ui.hover(hit)) RED else Theme.TEXT_TERTIARY, Theme.FONT_SEMIBOLD)
+        ui.hits += hit.intersect(clip) to { MusicPlayer.removeFromQueue(position) }
     }
 
     // ---------------------------------------------------------------- 封面墙（Coverflow）
