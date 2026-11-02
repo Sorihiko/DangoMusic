@@ -308,12 +308,12 @@ object ListenParty {
 
     /**
      * 断线 / 退服：房间数据在服务器上，服务端会把我们移出成员列表，
-     * 这里只管本机——退出房间并停止播放（不然人回到主菜单歌还在放）。
+     * 这里只管本机——退出房间；是否停止播放看设置（stopOnLeaveWorld，默认停）。
      */
     fun onSessionEnded() {
         val wasInRoom = role != Role.NONE
         if (role != Role.NONE) abandonLocally()
-        MusicPlayer.stop()
+        if (MusicPlayer.stopOnLeaveWorld) MusicPlayer.stop()
         ServerTransport.resetClock()
         if (wasInRoom) status = "Disconnected from the server"
     }

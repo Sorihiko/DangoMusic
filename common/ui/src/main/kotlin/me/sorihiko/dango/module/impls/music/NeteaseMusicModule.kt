@@ -52,6 +52,9 @@ class NeteaseMusicModule : Module() {
     @ModuleValue("Fade time", "How long the fade takes (milliseconds)")
     private val fadeMs = FloatValue(0f, 1000f, 300f, 0)
 
+    @ModuleValue("Stop when leaving", "Stop the music when you leave the world or the server")
+    private val stopOnLeaveWorld = BooleanValue(true)
+
     @ModuleValue("Language", "Choose the player interface language")
     // -1：尚未根据游戏语言初始化。早期 Fabric 入口处 Options 可能仍为空。
     private val language = IntValue(-1, 1, -1)
@@ -291,6 +294,7 @@ class NeteaseMusicModule : Module() {
         // 淡入淡出：暂停 / 继续 / 切歌时用，时长由设置里的滑条决定
         MusicPlayer.fadeEnabled = fade.get()
         MusicPlayer.fadeMs = fadeMs.value.toInt()
+        MusicPlayer.stopOnLeaveWorld = stopOnLeaveWorld.get()
 
         // 环境音效：设置和玩家周围的环境交给解码线程
         EnvironmentAudio.enabled = envAudio.get()

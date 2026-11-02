@@ -257,9 +257,10 @@ object MusicPlayer {
 
     // ---------------------------------------------------------------- 声音淡入淡出
 
+    /** 退出世界 / 退服时是否停止播放（默认停，可在设置里关掉） */
+    @Volatile var stopOnLeaveWorld = true
     /** 暂停 / 继续 / 切歌时把音量平滑地推上去或拉下来，避免"啪"的一声 */
-    @Volatile var fadeEnabled = true
-    /** 淡入淡出时长（毫秒），0 表示瞬间 */
+    @Volatile var fadeEnabled = true    /** 淡入淡出时长（毫秒），0 表示瞬间 */
     @Volatile var fadeMs = 300
 
     /** 连点暂停时，只让最后一次渐变生效，避免几个线程来回抢声卡音量 */

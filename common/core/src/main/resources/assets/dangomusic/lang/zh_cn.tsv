@@ -388,3 +388,5 @@ Fade	淡入淡出
 Fade the volume in and out when pausing, resuming and changing tracks	暂停、继续、切歌时让音量平滑过渡，避免爆音
 Fade time	淡入淡出时长
 How long the fade takes (milliseconds)	淡入淡出用多长时间（毫秒）
+Stop when leaving	退出时停止播放
+Stop the music when you leave the world or the server	退出世界或退服时停止播放；关掉后回到主菜单也会继续放
