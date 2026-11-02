@@ -201,6 +201,9 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
 
     private fun percent(v: Any): String = "${((v as FloatValue).value * 100f).roundToInt()}%"
 
+    /** 秒数：一位小数 + 单位 s（淡出倒计时 / 淡出耗时） */
+    private fun seconds(v: Any): String = "%.1f s".format((v as FloatValue).value)
+
     private fun buildSettings(): List<List<Group>> {
         val mm = DangoMusic.instance.moduleManager
 
@@ -236,20 +239,23 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
                 "flashSize" to "textFlash",
                 "danceAuto" to "dance", "danceTap" to "dance", "danceSpin" to "dance", "danceAmount" to "dance", "danceOffset" to "dance",
                 "translationColor" to "translation", "translationAnimation" to "translation", "translationWiggle" to "translation",
+                "translationOnly" to "translation",
             ),
             fmts = mapOf(
                 "spread" to { v: Any -> "${(v as FloatValue).value.roundToInt()}°" },
                 "glowRadius" to ::percent,
                 "danceOffset" to { v: Any -> "${(v as IntValue).value} ms" },
+                "fadeDelay" to ::seconds,
+                "fadeTime" to ::seconds,
             ),
         )
         ly.left.remove("smoothFont")   // 合进了"歌词字体"那一行
         val lyrics = mutableListOf(
             Group("Appearance", "Font and colors", ly.m, false, ly.take(listOf("worldMode", "scale", "lyricFont", "lyricColors", "textColor", "rainbowSpeed", "splitLines"))),
             Group("Position", "Where the lyrics float", ly.m, false, ly.take(listOf("distance", "facePlayer", "keepAway", "stayOnScreen", "aboveGround", "spread"))),
-            Group("Translation", "Under each line", ly.m, false, ly.take(listOf("translation", "translationColor", "translationAnimation", "translationWiggle"))),
+            Group("Translation", "Under each line", ly.m, false, ly.take(listOf("translation", "translationOnly", "translationColor", "translationAnimation", "translationWiggle"))),
             Group("Glow", "Deep Glow", ly.m, false, ly.take(listOf("glow", "glowNightOnly", "glowStrength", "glowRadius"))),
-            Group("Motion", "Animation", ly.m, false, ly.take(listOf("wiggle", "wiggleFps", "wiggleAmount", "textFlash", "wordPop", "flashSize"))),
+            Group("Motion", "Animation", ly.m, false, ly.take(listOf("wiggle", "wiggleFps", "wiggleAmount", "textFlash", "wordPop", "flashSize", "linesOnScreen", "fadeDelay", "fadeTime"))),
             Group("Dance", "Mobs on the beat", ly.m, false, ly.take(listOf("dance", "danceAuto", "danceTap", "danceSpin", "danceAmount", "danceOffset"))),
         )
         // 左上角的原版风格"正在播放"和 Song card 是同一类东西，放到 Music & HUD 里

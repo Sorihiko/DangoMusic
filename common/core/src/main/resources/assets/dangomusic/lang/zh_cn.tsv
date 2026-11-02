@@ -293,10 +293,18 @@ Let members control playback	允许成员切歌和控制播放
 Members can't control playback: the Firebase database rules need updating	成员控制被数据库拒绝了，请房间所在的 Firebase 更新数据库规则
 Translation	歌词翻译
 Show the translation under each lyric line when the song has one	歌曲有翻译时，在每句歌词下面显示翻译
+Translation only	只显示翻译
+When the song has a translation, show only the translation and hide the original line	歌曲有翻译时只显示翻译，不显示原文
 Translation animation	翻译出场动画
 The translation appears character by character like the lyrics	翻译像歌词一样逐字出现
 Translation wiggle	翻译抖动
 The translation wiggles like the lyrics (uses the Wiggle speed and amount)	翻译也像歌词一样抖动（用抖动的速度和幅度）
+Lines on screen	同屏歌词
+Number of lyric lines shown on screen, not counting the ones that are fading out	屏幕中显示的歌词条数，不算淡出
+Fade delay	淡出倒计时
+Time from entering fade-out until the fade animation actually starts	进入淡出到正式开始淡出动画的时间
+Fade time	淡出耗时
+How long the fade animation takes	淡出动画的耗时
 Lyric color	歌词颜色
 Color of the 3D lyrics	3D 歌词的文字颜色
 Translation color	翻译颜色

@@ -51,10 +51,22 @@ private const val SPRING = 12.0
 /** 天黑到这个程度（原版 sky darken，0 = 白天，11 = 半夜）就算晚上 */
 private const val NIGHT_SKY_DARKEN = 4
 
+/** 一句歌词里每行的高度（像素），换行排版和垂直居中都用它 */
+private const val LINE_H = 11f
+
+/** 原文按多宽换行 */
+private const val TEXT_WRAP = 200
+
 /** 翻译的字号是原文的多少 */
 private const val TRANSLATION_SCALE = 0.72f
 
-/** 翻译按多宽换行（原文是 200；字小了，按画出来差不多宽算） */
+/** 淡出时这句歌词总共往上飘多少格：按淡出进度走，所以淡出调长了也不会飘得更远 */
+private const val FADE_LIFT = 0.16f
+
+/** 翻译默认比原文淡一点（乘在透明度上；只显示翻译时用 1） */
+private const val TRANSLATION_ALPHA = 0.85f
+
+/** 翻译画在原文下面时按多宽换行（原文是 TEXT_WRAP；字小了，按画出来差不多宽算） */
 private const val TRANSLATION_WRAP = 270
 
 /**
@@ -140,11 +152,23 @@ class LyricsModule : Module() {
     @ModuleValue("Translation", "Show the translation under each lyric line when the song has one")
     private val translation = BooleanValue(false)
 
+    @ModuleValue("Translation only", "When the song has a translation, show only the translation and hide the original line")
+    private val translationOnly = BooleanValue(false)
+
     @ModuleValue("Translation animation", "The translation appears character by character like the lyrics")
     private val translationAnimation = BooleanValue(true)
 
     @ModuleValue("Translation wiggle", "The translation wiggles like the lyrics (uses the Wiggle speed and amount)")
     private val translationWiggle = BooleanValue(true)
+
+    @ModuleValue("Lines on screen", "Number of lyric lines shown on screen, not counting the ones that are fading out")
+    private val linesOnScreen = IntValue(1, 5, 1)
+
+    @ModuleValue("Fade delay", "Time from entering fade-out until the fade animation actually starts")
+    private val fadeDelay = FloatValue(0f, 10f, 0f, 1)
+
+    @ModuleValue("Fade time", "How long the fade animation takes")
+    private val fadeTime = FloatValue(0f, 10f, 1f, 1)
 
     @ModuleValue("Mob dance", "Every creature in the world squashes and stretches on the beat of the song")
     private val dance = BooleanValue(false)
@@ -211,8 +235,10 @@ class LyricsModule : Module() {
         val charTimes: LongArray = LongArray(0),
     ) {
         var fadeStartNanos = 0L
-        /** 这一句的翻译（已经按宽度换好行；没有就是空的），画在原文下面 */
+        /** 这一句的翻译（已经按宽度换好行；没有就是空的），画在原文下面（小字号） */
         var translation: List<String> = emptyList()
+        /** 同一句翻译，按原文字号和原文的换行宽度再排一遍："只显示翻译"时用它，大小和原文一致 */
+        var translationBig: List<String> = emptyList()
         /** Stay on screen 往回拉时的角速度（度 / 秒），用弹簧算，起步和停下都是平滑的 */
         var vYaw = 0.0
         var vPitch = 0.0
@@ -224,7 +250,12 @@ class LyricsModule : Module() {
     private fun appearOf(f: Floating): Float =
         if (f.resumedAt == 0L) 1f else ((System.nanoTime() - f.resumedAt) / 3e8f).coerceIn(0f, 1f)
 
-    private var active: Floating? = null
+    /** 只显示翻译：翻译开着、开关开着，并且这一句确实有翻译（没有就照旧显示原文） */
+    private fun onlyTranslation(f: Floating): Boolean =
+        translation.get() && translationOnly.get() && f.translationBig.isNotEmpty()
+
+    /** 同一屏幕上还没进入淡出流程的歌词（最多"同屏歌词"条，最先出现的先淡出） */
+    private val live = mutableListOf<Floating>()
     /** 左上角小柱子当前颜色（向封面主色渐变） */
     private var barR = 0xF2 / 255f
     private var barG = 0xA7 / 255f
@@ -241,7 +272,7 @@ class LyricsModule : Module() {
         cover.clear()
         current = null
         currentKey = null
-        active = null
+        live.clear()
         fading.clear()
         flash.reset()
         lastIndex = -1
@@ -281,8 +312,7 @@ class LyricsModule : Module() {
             if (current != null && (now - lastSeenNanos) / 1e9 > 3.0) {
                 current = null
                 currentKey = null
-                active?.let { startFade(it) }
-                active = null
+                fadeAll()
                 lastIndex = -1
             }
             return
@@ -292,8 +322,7 @@ class LyricsModule : Module() {
         if (s.key != currentKey) {
             currentKey = s.key
             songPos = p
-            active?.let { startFade(it) }
-            active = null
+            fadeAll()
             lastIndex = -1
             requestLyrics(s)
         } else {
@@ -349,26 +378,25 @@ class LyricsModule : Module() {
             val pos = songPos.toLong()
             val idx = lyrics.indexAt(pos)
             if (paused) {
-                // 暂停：当前这句淡出消失，恢复播放时再出现
-                active?.let { startFade(it) }
-                active = null
+                // 暂停：屏幕上的歌词淡出消失，恢复播放时再出现
+                fadeAll()
                 lastIndex = idx
                 wasPaused = true
             } else if (idx != lastIndex || wasPaused) {
                 val resumed = wasPaused && idx == lastIndex
                 wasPaused = false
                 lastIndex = idx
-                active?.let { startFade(it) }
-                active = null
                 if (idx >= 0) {
                     val line = lyrics.lines[idx]
                     if (line.text.isNotBlank()) {
                         val next = lyrics.lines.getOrNull(idx + 1)?.timeMs ?: (line.timeMs + 5000)
-                        active = spawn(line, next).also { if (resumed) it.resumedAt = System.nanoTime() }
+                        live += spawn(line, next).also { if (resumed) it.resumedAt = System.nanoTime() }
                     }
                 }
             }
         }
+        // 超出"同屏歌词"条数的（最先出现的那些）立刻进入淡出流程
+        trimLive()
 
         if (worldMode.get() && !textFlash.get()) keepOnScreen()
 
@@ -380,11 +408,12 @@ class LyricsModule : Module() {
             if (!worldMode.get()) {
                 // 3D lyrics 关掉 = 不显示歌词
             } else if (textFlash.get()) {
-                flash.draw(if (s != null && !paused) lyrics else null, songNow, beat, flashSize.value)
+                flash.draw(if (s != null && !paused) lyrics else null, songNow, beat, flashSize.value,
+                    translation.get() && translationOnly.get())
             } else {
                 // 先把歌词画到发光画布上做出光晕，再正常画一遍清晰的字
                 val glowAmount = glowStrength.value * nightGlow()
-                if (glow.get() && glowAmount > 0.01f && deepGlow.available && (active != null || fading.isNotEmpty())) {
+                if (glow.get() && glowAmount > 0.01f && deepGlow.available && (live.isNotEmpty() || fading.isNotEmpty())) {
                     try {
                         if (deepGlow.begin()) {
                             glowPass = true
@@ -434,6 +463,18 @@ class LyricsModule : Module() {
     private fun startFade(f: Floating) {
         f.fadeStartNanos = System.nanoTime()
         fading.add(f)
+    }
+
+    /** 屏幕上所有还没淡出的歌词一起进入淡出流程（暂停、切歌、放完时用） */
+    private fun fadeAll() {
+        for (f in live) startFade(f)
+        live.clear()
+    }
+
+    /** 只留下最近"同屏歌词"条，多出来的从最早的那条开始淡出 */
+    private fun trimLive() {
+        val max = linesOnScreen.value.coerceAtLeast(1)
+        while (live.size > max) startFade(live.removeAt(0))
     }
 
     /** 拆成"词"：英文按空格；中日韩每两个字一组。返回每个词（去掉空白） */
@@ -497,14 +538,17 @@ class LyricsModule : Module() {
         val text = line.text
         val startMs = line.timeMs
         val ct = charTimes(line, nextMs)
-        val lines = wrap(text, 200)
+        val lines = wrap(text, TEXT_WRAP)
         val chars = lines.sumOf { it.length }
         val lineDur = (nextMs - startMs).coerceAtLeast(400L)
         val reveal = min((chars * 55L).coerceAtLeast(250L), (lineDur * 0.6).toLong())
 
+        // 翻译排两套：画在原文下面时用小字号那套；"只显示翻译"换成原文大小，就用原文的换行宽度
         val tr = if (translation.get()) line.translation?.let { wrap(it, TRANSLATION_WRAP) } ?: emptyList() else emptyList()
+        val trBig = if (translation.get()) line.translation?.let { wrap(it, TEXT_WRAP) } ?: emptyList() else emptyList()
         val player = DangoClient.platform.player
-        if (player == null) return Floating(lines, startMs, reveal, 0.0, 0.0, 0.0, 0f, 0f, ct).also { it.translation = tr }
+        if (player == null) return Floating(lines, startMs, reveal, 0.0, 0.0, 0.0, 0f, 0f, ct)
+            .also { it.translation = tr; it.translationBig = trBig }
         val yaw = player.yaw + (random.nextFloat() * 2f - 1f) * spread.value
         val d = distance.value.toDouble()
         var pitch = (player.pitch - 3f - random.nextFloat() * 10f).coerceIn(-60f, 30f)
@@ -517,7 +561,8 @@ class LyricsModule : Module() {
         val ex = player.eyeX
         val ey = player.eyeY
         val ez = player.eyeZ
-        return Floating(lines, startMs, reveal, ex + dx * d, ey + dy * d, ez + dz * d, yaw, pitch, ct).also { it.translation = tr }
+        return Floating(lines, startMs, reveal, ex + dx * d, ey + dy * d, ez + dz * d, yaw, pitch, ct)
+            .also { it.translation = tr; it.translationBig = trBig }
     }
 
 
@@ -736,7 +781,7 @@ class LyricsModule : Module() {
      * 翻译：画在原文下面，字小一点、淡一点；原文开始出现后整行淡入（不逐字）。
      * 和原文用同一个位置和朝向，发光层也会画到。
      */
-    private fun drawTranslation(lines: List<String>, elapsedMs: Long, revealMs: Long, alphaMul: Float, top: Float, scale: Float) {
+    private fun drawTranslation(lines: List<String>, elapsedMs: Long, revealMs: Long, alphaMul: Float, top: Float, scale: Float, dim: Float = TRANSLATION_ALPHA) {
         if (lines.isEmpty() || !translation.get()) return
         val smooth = smoothFont.get()
         val pen = DangoClient.gfx.text
@@ -751,7 +796,7 @@ class LyricsModule : Module() {
             // 默认：整行一起淡入
             var a = ((elapsedMs - 120L) / 260f).coerceIn(0f, 1f)
             a = a * a * (3f - 2f * a)
-            val alpha = a * alphaMul * 0.85f
+            val alpha = a * alphaMul * dim
             if (alpha > 0.02f) {
                 var y = 0f
                 for (line in lines) {
@@ -795,7 +840,7 @@ class LyricsModule : Module() {
                         a = t
                         lift = 0f
                     }
-                    val alpha = a * alphaMul * 0.85f
+                    val alpha = a * alphaMul * dim
                     if (alpha > 0.02f && !c.isWhitespace()) glyphs += Glyph(c, x, y + lift, alpha, 1000 + k, rgb)
                     x += charW(c)
                     k++
@@ -935,8 +980,15 @@ class LyricsModule : Module() {
 
             // 字本身占的角度：留出一半宽 / 高，再多留 2 度边距
             // 翻译在原文下面多占一截：按整体高度算（偏保守，上下都留出来）
-            val rows = f.lines.size + f.translation.size * TRANSLATION_SCALE * 2.0
-            val halfW = Math.toDegrees(atan2(max(f.lines.maxOf { strW(it) }, f.translation.maxOfOrNull { strW(it) * TRANSLATION_SCALE } ?: 0f) * s / 2.0, len))
+            // 只显示翻译时原文不画，就只按翻译那几行算
+            val only = onlyTranslation(f)
+            // 两边都要是 Double，否则 if 会推成 Float/Double 的公共父类型，下面就没法乘了
+            // 只显示翻译时原文不画，就只按翻译那几行算（这时候翻译是原文大小）
+            val rows: Double = if (only) f.translationBig.size.toDouble()
+                               else f.lines.size + f.translation.size * TRANSLATION_SCALE * 2.0
+            val contentW = if (only) f.translationBig.maxOf { strW(it) }
+                           else max(f.lines.maxOf { strW(it) }, f.translation.maxOfOrNull { strW(it) * TRANSLATION_SCALE } ?: 0f)
+            val halfW = Math.toDegrees(atan2(contentW * s / 2.0, len))
             val halfH = Math.toDegrees(atan2(rows * 11.0 * s / 2.0, len))
             val hLim = max(0.0, hHalf - halfW - 2.0)
             val vLim = max(0.0, vHalf - halfH - 2.0)
@@ -989,7 +1041,7 @@ class LyricsModule : Module() {
             f.pitch = (f.pitch + (newPitch - curPitch)).toFloat().coerceIn(-90f, 90f)
         }
 
-        active?.let { follow(it) }
+        live.forEach { follow(it) }
         fading.forEach { follow(it) }
     }
 
@@ -1026,27 +1078,47 @@ class LyricsModule : Module() {
             }
             val s = 0.03f * scale.value * (distance.value / 6.5f)
             world.push(rx, ry + lift, rz, yaw, pitch, s)
-            drawAnimated(f.lines, songNow - f.startMs, f.revealMs, alphaMul, if (wordPop.get()) f.charTimes else null)
-            drawTranslation(f.translation, songNow - f.startMs, f.revealMs, alphaMul, f.lines.size * 11f / 2f + 2.5f, TRANSLATION_SCALE)
+            val elapsed = songNow - f.startMs
+            if (onlyTranslation(f)) {
+                // 只显示翻译：不画原文，翻译顶上去占原文的位置，用原文的字号（换行宽度也是原文的），
+                // 垂直居中，也不再压暗
+                drawTranslation(f.translationBig, elapsed, f.revealMs, alphaMul,
+                    -(f.translationBig.size * LINE_H) / 2f, 1f, 1f)
+            } else {
+                drawAnimated(f.lines, elapsed, f.revealMs, alphaMul, if (wordPop.get()) f.charTimes else null)
+                drawTranslation(f.translation, elapsed, f.revealMs, alphaMul, f.lines.size * LINE_H / 2f + 2.5f, TRANSLATION_SCALE)
+            }
             world.pop()
         }
 
         drawFading { f, a, lift -> draw(f, a, lift) }
-        active?.let { draw(it, appearOf(it), 0f) }
+        for (f in live) draw(f, appearOf(f), 0f)
     }
 
+    /**
+     * 淡出：先等"淡出倒计时"秒（这段时间歌词保持原样不动），再用"淡出耗时"秒淡掉，
+     * 同时按淡出进度往上飘一点（飘多远只和进度有关，淡出调长了也不会飘得更远）。
+     */
     private fun drawFading(draw: (Floating, Float, Float) -> Unit) {
         val now = System.nanoTime()
+        val delay = fadeDelay.value
+        val dur = fadeTime.value
         val it = fading.iterator()
         while (it.hasNext()) {
             val f = it.next()
             val t = (now - f.fadeStartNanos) / 1e9f
-            val a = 1f - t / 0.4f
+            if (t < delay) {
+                // 倒计时还没走完：歌词还是完整的，时间到了才开始淡
+                draw(f, 1f, 0f)
+                continue
+            }
+            val prog = if (dur <= 0.001f) 1f else ((t - delay) / dur).coerceIn(0f, 1f)
+            val a = 1f - prog
             if (a <= 0f) {
                 it.remove()
                 continue
             }
-            draw(f, a, t * 0.4f)
+            draw(f, a, prog * FADE_LIFT)
         }
     }
 

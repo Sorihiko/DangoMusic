@@ -37,6 +37,8 @@ class TextFlash {
         val red: Boolean,
         val glow: Boolean,
         val tilt: Float,
+        /** 这块是不是"只显示翻译"画出来的：开关变了要重做整块 */
+        val only: Boolean,
     ) {
         var fadeStartNanos = 0L
     }
@@ -104,9 +106,12 @@ class TextFlash {
         return n
     }
 
-    private fun build(line: LyricLine, endMs: Long): Block {
+    private fun build(line: LyricLine, endMs: Long, onlyTranslation: Boolean): Block {
+        // 只显示翻译：这一句有翻译就整句改用翻译（翻译没有逐字时间，按一句平均拆开）
+        val translated = if (onlyTranslation) line.translation?.takeIf { it.isNotBlank() } else null
+        val text = translated ?: line.text
         val units = mutableListOf<Piece>()
-        val words = line.words
+        val words = if (translated != null) null else line.words
         if (words != null) {
             // 逐字歌词：英文词直接用；连续的中日韩单字两两合并
             var pendingText = ""
@@ -131,7 +136,7 @@ class TextFlash {
             if (pendingText.isNotEmpty()) units += Piece(pendingText, pendingStart, false)
         } else {
             // 普通歌词：把一句平均拆开
-            val toks = tokens(line.text).map { shape(it) }.filter { it.isNotEmpty() }
+            val toks = tokens(text).map { shape(it) }.filter { it.isNotEmpty() }
             val dur = (endMs - line.timeMs).coerceAtLeast(300L)
             val span = min(dur * 0.8, toks.size * 380.0)
             toks.forEachIndexed { i, t ->
@@ -164,7 +169,7 @@ class TextFlash {
         if (row.units.isNotEmpty()) rows += row
 
         val red = random.nextFloat() < 0.32f
-        return Block(line.timeMs, rows, red, red || random.nextFloat() < 0.35f, (random.nextFloat() * 2f - 1f) * 12f)
+        return Block(line.timeMs, rows, red, red || random.nextFloat() < 0.35f, (random.nextFloat() * 2f - 1f) * 12f, translated != null)
     }
 
     // ---------------------------------------------------------------- 绘制
@@ -172,8 +177,9 @@ class TextFlash {
     /**
      * @param pos   歌曲内时间（已加偏移）
      * @param beat  鼓点冲击强度 0..1（只有内置播放器有）
+     * @param onlyTranslation 选了"只显示翻译"：有翻译就只砸翻译出来
      */
-    fun draw(lyrics: Lyrics?, pos: Long, beat: Float, sizeMul: Float) {
+    fun draw(lyrics: Lyrics?, pos: Long, beat: Float, sizeMul: Float, onlyTranslation: Boolean = false) {
         val now = System.nanoTime()
         val dt = if (lastNanos == 0L) 16f else ((now - lastNanos) / 1e6f).coerceIn(0f, 50f)
         lastNanos = now
@@ -183,11 +189,11 @@ class TextFlash {
             val idx = lyrics.indexAt(pos)
             val line = lyrics.lines.getOrNull(idx)
             val lineTime = line?.timeMs ?: Long.MIN_VALUE
-            if (current?.lineTime != lineTime) {
+            if (current?.lineTime != lineTime || current?.only != onlyTranslation) {
                 current?.let { it.fadeStartNanos = now; fading += it }
                 current = if (line != null && line.text.isNotBlank()) {
                     val end = lyrics.lines.getOrNull(idx + 1)?.timeMs ?: (line.timeMs + 5000)
-                    build(line, end)
+                    build(line, end, onlyTranslation)
                 } else null
             }
         } else if (current != null) {
