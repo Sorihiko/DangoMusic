@@ -218,6 +218,17 @@ object LegacyWorld : WorldView {
     override val cameraY: Double get() = mc.renderManager.viewerPosY
     override val cameraZ: Double get() = mc.renderManager.viewerPosZ
 
+    private val viewMatrix = org.lwjgl.BufferUtils.createFloatBuffer(16)
+
+    override fun cameraAngles(): me.sorihiko.dango.gfx.ViewAngles {
+        // 在任何歌词变换和发光绘制之前只读一次，保留睡觉时原版附加的镜头旋转。
+        viewMatrix.clear()
+        GL11.glGetFloat(GL11.GL_MODELVIEW_MATRIX, viewMatrix)
+        return me.sorihiko.dango.gfx.ViewAngles.fromViewBack(
+            viewMatrix.get(2).toDouble(), viewMatrix.get(6).toDouble(), viewMatrix.get(10).toDouble(),
+        ) ?: me.sorihiko.dango.gfx.ViewAngles(mc.renderManager.playerViewY, mc.renderManager.playerViewX)
+    }
+
     override fun begin() {
         LegacyGfx.prepareTextState()
         GlStateManager.disableDepth()

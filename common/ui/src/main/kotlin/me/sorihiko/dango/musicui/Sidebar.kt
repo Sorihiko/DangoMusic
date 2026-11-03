@@ -6,6 +6,7 @@ import me.sorihiko.dango.DangoClient
 import me.sorihiko.dango.music.CoverCache
 import me.sorihiko.dango.music.MusicScreen
 import me.sorihiko.dango.music.NeteaseApi
+import me.sorihiko.dango.music.CloudDrives
 import me.sorihiko.dango.music.MusicSource
 import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.NativeAccounts
@@ -181,6 +182,14 @@ internal class Sidebar(private val screen: MusicScreen) {
         nav("♫", I18n.text("Now Playing"), page == Page.QUEUE, false) { screen.go(Page.QUEUE) }
         nav("♬", if (ListenParty.role == ListenParty.Role.NONE) I18n.text("Listen Together") else I18n.text("Listen Together · ") + ListenParty.members.size,
             page == Page.PARTY, ListenParty.role != ListenParty.Role.NONE) { screen.go(Page.PARTY) }
+        val netease = MusicSources.selected == MusicSource.NETEASE
+        val playlists = Library.playlists
+        // 云盘是固定入口，不跟着歌单滚动；列表未加载完时也允许直接打开。
+        CloudDrives.entry(MusicSources.selected)?.let { cloud ->
+            nav("☁", I18n.text("Cloud drive"), page == Page.PLAYLIST && ScreenState.opened?.id == cloud.id, false) {
+                screen.openPlaylist(cloud, null)
+            }
+        }
         y += 4f
         section(I18n.text("MY PLAYLISTS"))
 
@@ -189,7 +198,7 @@ internal class Sidebar(private val screen: MusicScreen) {
         val footerH = 92f
         listArea = LayoutBounds(side.x + 6f, y, side.width - 12f, side.bottom - footerH - y)
         val rows = max(1, (listArea.height / rowH).toInt())
-        val list = Library.playlists
+        val list = playlists.filterNot { it.id == CloudDrives.id(MusicSources.selected) }
         scroll = scroll.coerceIn(0, max(0, list.size - rows))
         scrollPos = ui.easeScroll(scrollPos, scroll, rows * 3)
         val firstOwned = list.indexOfFirst { it.owned }

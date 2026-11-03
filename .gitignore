@@ -34,10 +34,11 @@ node_modules/
 Thumbs.db
 
 # Notes for the AI assistant (instructions, hand-off and work plans): local only
-CLAUDE.md
-docs/OPUS-HANDOFF.md
 docs/LISTEN-TOGETHER-PLAN.md
 docs/CHANGELOG-1.6.0-beta.md
 tests/
 relay/
-docs/multi-source-beta.md
+docs/ISSUE-36-PLAYBACK.md
+docs/ISSUE-KUGOU-PLAYBACK.md
+docs/NETEASE-CLOUD-BETA.md
+docs/OGG-AUDIO.md

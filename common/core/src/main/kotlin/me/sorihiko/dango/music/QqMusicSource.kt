@@ -13,7 +13,10 @@ object QqMusicSource : MusicSourceApi {
     override fun playlists() = catalog.playlists()
     override fun recommend() = catalog.recommend()
     override fun charts() = catalog.charts()
-    override fun playlistTracks(id: Long) = catalog.tracks(id)
+    override fun playlistTracks(id: Long) = if (id == CloudDrives.QQ_ID) {
+        val account = NativeAccounts.get(source) ?: throw SourceAccessException("Log in to QQ Music to read your cloud drive.")
+        QqCloud().tracks(account)
+    } else catalog.tracks(id)
 
     internal fun profileId(account: NativeAccount): String {
         try {

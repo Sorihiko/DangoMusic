@@ -33,6 +33,8 @@ object I18n {
 
     /** 后台状态可能在语言切换前产生，因此绘制时再翻译，保留错误详情。 */
     fun message(source: String): String {
+        val stopped = " · Auto-skip stopped after repeated playback failures."
+        if (source.endsWith(stopped)) return message(source.removeSuffix(stopped)) + " · " + text(stopped.removePrefix(" · "))
         val exact = text(source)
         if (exact != source) return exact
         for (prefix in messagePrefixes) {

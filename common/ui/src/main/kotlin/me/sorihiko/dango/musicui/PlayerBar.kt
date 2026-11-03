@@ -20,6 +20,10 @@ import kotlin.math.min
 internal class PlayerBar(private val screen: MusicScreen, private val module: NeteaseMusicModule) {
     private val ui = screen.ui
 
+    private var lastSubtitle = ""
+    private var subtitleAt = 0L
+    private var lastSkipNotice = 0L
+    private var failedMembers = emptySet<String>()
     private var progRect = LayoutBounds()
     private var volRect = LayoutBounds()
 
@@ -59,7 +63,37 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
             MusicPlayer.message.isNotEmpty() -> I18n.message(MusicPlayer.message)
             else -> t.artists.joinToString(" / ")
         }
-        ui.text(ui.trim(sub, infoW, 11f), infoX, coverBox.y + 28f, 11f, Theme.TEXT_SECONDARY)
+        val skipAt = MusicPlayer.skipNotice
+        if (lastSkipNotice != skipAt) {
+            lastSkipNotice = skipAt
+            val remaining = 5_000_000_000L - (System.nanoTime() - skipAt)
+            // 重开界面不重放过期事件，也不延长仍在显示的提示。
+            if (skipAt != 0L && remaining > 0L) Library.showTemporaryStatus(
+                I18n.text("This song could not be played. Skipped to the next song."), remaining / 1_000_000L)
+        }
+        val failures = me.sorihiko.dango.party.ListenParty.members.filter {
+            it.failedTrack.isNotEmpty() && it.failedTrack == t?.key
+        }.map { it.uid + ":" + it.failedTrack }.toSet()
+        if ((failures - failedMembers).isNotEmpty()) {
+            Library.showTemporaryStatus(I18n.text("Someone in the room cannot play this song. Check the room member list; account access, region or network may be the cause."), 8_000L)
+        }
+        failedMembers = failures
+        if (sub != lastSubtitle) { lastSubtitle = sub; subtitleAt = System.nanoTime() }
+        val overflow = ui.width(sub, 11f) - infoW
+        if (MusicPlayer.message.isNotEmpty() && overflow > 0f) {
+            val seconds = (System.nanoTime() - subtitleAt) / 1e9
+            val travel = overflow / 28.0
+            val phase = seconds % (travel * 2 + 3)
+            val offset = when {
+                phase < 1.5 -> 0f
+                phase < 1.5 + travel -> ((phase - 1.5) * 28).toFloat()
+                phase < 3 + travel -> overflow
+                else -> (overflow - (phase - 3 - travel) * 28).toFloat()
+            }
+            ui.beginClip(LayoutBounds(infoX, coverBox.y + 24f, infoW, 20f))
+            ui.text(sub, infoX - offset, coverBox.y + 28f, 11f, Theme.TEXT_SECONDARY)
+            ui.endClip()
+        } else ui.text(ui.trim(sub, infoW, 11f), infoX, coverBox.y + 28f, 11f, Theme.TEXT_SECONDARY)
 
         // 网易云：红心（登录了才有）
         if (t != null && t.source == MusicSource.NETEASE && NeteaseApi.loggedIn) {

@@ -35,6 +35,8 @@ import me.sorihiko.dango.update.UpdateChecker
 @ModuleMeta(Category.MUSIC, "NeteaseMusic")
 class NeteaseMusicModule : Module() {
 
+    private val androidPlaybackHint = me.sorihiko.dango.music.AndroidPlaybackHint()
+
     @ModuleValue("Music source", "Select a music provider")
     private val musicSource = IntValue(0, 2, 0)
 
@@ -269,6 +271,7 @@ class NeteaseMusicModule : Module() {
     fun onTick(e: TickEvent) {
         // 即使播放器被关闭，也要初始化并保存界面语言。
         applyLanguage()
+        androidPlaybackHint.tick(DangoMusic.instance.platform)
         MusicSources.selected = MusicSource.values()[musicSource.value]
         DangoMusic.instance.platform.syncKeyBindings(keyBindings)
         UpdateChecker.tick(checkUpdates.get())

@@ -247,6 +247,8 @@ object ModernWorld : WorldView {
     override val cameraY: Double get() = camera.y
     override val cameraZ: Double get() = camera.z
 
+    override fun cameraAngles() = me.sorihiko.dango.gfx.ViewAngles(McCompat.cameraYRot(), McCompat.cameraXRot())
+
     private fun worldState() {
         Gl.blend(true)
         Gl.blendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ONE, GL11.GL_ZERO)

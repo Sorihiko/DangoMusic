@@ -25,6 +25,16 @@ import net.minecraftforge.fml.common.gameevent.TickEvent as ForgeTickEvent
  */
 class ForgeBridge {
 
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    fun onChatMouse(e: net.minecraftforge.client.event.GuiScreenEvent.MouseInputEvent.Pre) {
+        if (e.gui !is net.minecraft.client.gui.GuiChat || org.lwjgl.input.Mouse.getEventButton() != 0 || !org.lwjgl.input.Mouse.getEventButtonState()) return
+        val chat = net.minecraft.client.Minecraft.getMinecraft().ingameGUI.chatGUI
+        val component = chat.getChatComponent(org.lwjgl.input.Mouse.getX(), org.lwjgl.input.Mouse.getY()) ?: return
+        val value = me.sorihiko.dango.legacy.LegacyChatCopy.copyValue(component.chatStyle.chatClickEvent) ?: return
+        net.minecraft.client.gui.GuiScreen.setClipboardString(value)
+        e.isCanceled = true
+    }
+
     @SubscribeEvent
     fun onMenuDraw(e: net.minecraftforge.client.event.GuiScreenEvent.DrawScreenEvent.Post) {
         if (me.sorihiko.dango.legacy.LegacyPlatform.inMainMenu) {

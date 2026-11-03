@@ -52,7 +52,7 @@ internal object KugouGateway {
         val root = response.json()
         val code = root.number("error_code").takeIf { it != 0L } ?: root.number("err_code")
         DangoLogger.info("Kugou catalog route={} status={} code={}",path,root.number("status"),code)
-        return checked(root, code)
+        return checked(root, code, path == "/bsstrackercdngz/v2/query_musicclound_url")
     }
 
     /** 概念版登录的账号：私人歌单这些也要用概念版的身份去要（普通版那套网页登录它没有） */
@@ -67,15 +67,16 @@ internal object KugouGateway {
         KugouLite.checkVerification(root)
         val code = root.number("error_code").takeIf { it != 0L } ?: root.number("err_code")
         DangoLogger.info("Kugou lite catalog route={} status={} code={}", path, root.number("status"), code)
-        return checked(root, code)
+        return checked(root, code, path == "/bsstrackercdngz/v2/query_musicclound_url")
     }
 
-    private fun checked(root: JsonObject, code: Long): JsonObject {
+    private fun checked(root: JsonObject, code: Long, cloudUrl: Boolean = false): JsonObject {
         if (root.number("status") != 1L) throw SourceAccessException(when (code) {
             30020L -> "Kugou requires additional security verification. Please try again later."
             20017L -> "Kugou login is no longer valid. Please log in again."
             else -> "Kugou library request failed. Please retry or log in again."
         })
+        if (cloudUrl) return root.obj("data") ?: root
         return root.obj("data") ?: throw SourceAccessException("Kugou returned incomplete library data. Please retry.")
     }
 }

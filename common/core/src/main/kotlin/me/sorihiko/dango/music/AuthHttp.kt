@@ -23,7 +23,7 @@ internal object AuthHttp {
 
     fun allowed(source: MusicSource, host: String?): Boolean = when (source) {
         MusicSource.QQ -> host in setOf("xui.ptlogin2.qq.com", "ssl.ptlogin2.qq.com", "graph.qq.com", "y.qq.com", "u.y.qq.com", "szu.y.qq.com", "shu.y.qq.com", "c.y.qq.com")
-        MusicSource.KUGOU -> host in setOf("login-user.kugou.com", "loginservice.kugou.com", "wwwapi.kugou.com", "wwwapiretry.kugou.com", "www.kugou.com", "gateway.kugou.com", "kugouvip.kugou.com")
+        MusicSource.KUGOU -> host in setOf("login-user.kugou.com", "loginservice.kugou.com", "wwwapi.kugou.com", "wwwapiretry.kugou.com", "www.kugou.com", "gateway.kugou.com", "kugouvip.kugou.com", "mcloudservice.kugou.com")
         else -> false
     }
 
@@ -49,7 +49,12 @@ internal object AuthHttp {
 
     @JvmOverloads
     fun request(source: MusicSource, url: String, cookies: CookieManager, body: String? = null,
-                contentType: String = "application/x-www-form-urlencoded", headers: Map<String, String> = emptyMap()): Response {
+                contentType: String = "application/x-www-form-urlencoded", headers: Map<String, String> = emptyMap()): Response =
+        requestBytes(source, url, cookies, body?.toByteArray(Charsets.UTF_8), contentType, headers)
+
+    /** Some official endpoints exchange encrypted binary payloads, not UTF-8 form text. */
+    fun requestBytes(source: MusicSource, url: String, cookies: CookieManager, body: ByteArray?,
+                     contentType: String, headers: Map<String, String> = emptyMap()): Response {
         val uri = URI(url)
         require(uri.scheme == "https" && allowed(source, uri.host) && uri.userInfo == null && (uri.port == -1 || uri.port == 443)) { "Invalid authentication endpoint" }
         val conn = uri.toURL().openConnection() as HttpURLConnection
@@ -69,7 +74,7 @@ internal object AuthHttp {
             if (body != null) {
                 conn.requestMethod = "POST"; conn.doOutput = true
                 conn.setRequestProperty("Content-Type", contentType)
-                conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+                conn.outputStream.use { it.write(body) }
             }
             val code = conn.responseCode
             acceptCookies(source, uri, cookies, conn.headerFields.filterKeys { it != null })

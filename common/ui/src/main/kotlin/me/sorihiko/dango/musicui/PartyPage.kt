@@ -94,19 +94,21 @@ internal class PartyPage(private val screen: MusicScreen) {
             ui.text(I18n.text("IN THIS ROOM · ") + list.size, x, y, 10f, Theme.TEXT_TERTIARY, Theme.FONT_SEMIBOLD)
             y += 18f
             for (m in list.take(10)) {
-                val row = LayoutBounds(x, y, 320f, 34f)
+                val failed = m.failedTrack.isNotEmpty() && m.failedTrack == me.sorihiko.dango.music.MusicPlayer.current?.key
+                val row = LayoutBounds(x, y, 320f, if (failed) 52f else 34f)
                 ui.card(row, Theme.CARD, 10f)
                 val av = LayoutBounds(row.x + 8f, row.y + 6f, 22f, 22f)
                 ctx.drawShape(av, ShapeStyle(if (m.uid == ListenParty.hostUid) RED else Theme.TRACK, 11f))
                 ui.icon(m.name.take(1).uppercase(), av.x + 11f, av.y + 11f, 11f, Theme.TEXT_PRIMARY)
-                val label = m.name + if (m.uid == ListenParty.transport.uid) I18n.text("  (you)") else ""
+                val label = m.name + (if (m.uid == ListenParty.transport.uid) I18n.text("  (you)") else "")
                 ui.text(ui.trim(label, 200f, 12f), av.right + 10f, row.y + 11f, 12f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
+                if (failed) ui.text(I18n.text("Unable to play this song"), av.right + 10f, row.y + 32f, 10f, RED)
                 if (m.uid == ListenParty.hostUid) {
                     val hb = LayoutBounds(row.right - 54f, row.y + 8f, 44f, 18f)
                     ctx.drawShape(hb, ShapeStyle(RED.copy(a = 0.25f), 9f))
                     ui.text(I18n.text("HOST"), hb.x + (hb.width - ui.width(I18n.text("HOST"), 9f, Theme.FONT_SEMIBOLD)) / 2f, hb.y + 5f, 9f, RED, Theme.FONT_SEMIBOLD)
                 }
-                y += 40f
+                y += row.height + 6f
             }
             y += 10f
             ui.pill(LayoutBounds(x, y, 140f, 34f), Color(1f, 1f, 1f, 0.12f), if (role == ListenParty.Role.HOST) I18n.text("Close room") else I18n.text("Leave room")) {

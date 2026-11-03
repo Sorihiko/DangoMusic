@@ -79,6 +79,9 @@ interface Platform {
 
     // ---------------------------------------------------------------- 界面
 
+    /** 仅在本地聊天栏显示提示；世界未就绪时返回 false，不能向服务器发送聊天消息。 */
+    fun showChatMessage(message: String, copyText: String = "", copyHint: String = ""): Boolean = false
+
     /** 打开内置播放器 */
     fun openMusicScreen()
 

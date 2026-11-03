@@ -366,3 +366,44 @@ Position	位置
 Where the lyrics float	歌词在世界里的位置
 Song info	歌曲信息
 Top left, classic style	左上角，原版风格
+
+
+Auto-skip stopped after repeated playback failures.	连续播放失败，已停止自动跳过。
+No decodable audio was found.	没有可解码的音频。
+This song could not be played. Skipped to the next song.	该歌曲无法播放，已跳过到下一首。
+
+ · Unable to play	 · 无法播放
+Unable to play this song	无法播放这首歌
+Someone in the room cannot play this song. Check the room member list; account access, region or network may be the cause.	房间里有人无法播放这首歌，请查看成员列表；可能与账号权限、地区或网络有关。
+Ogg Opus audio is not supported yet.	暂不支持 Ogg Opus 音频。
+Unrecognized Ogg audio encoding.	无法识别 Ogg 音频的编码。
+Cloud drive	云盘
+NetEase login has expired. Please log in again.	网易云登录已失效，请重新登录。
+NetEase rejected the playback request. Please retry later.	网易云拒绝了播放请求，请稍后重试。
+No playable cloud audio was returned. Check this upload in the official NetEase client.	未取得可播放的云盘音频，请在网易云官方客户端检查这首上传歌曲。
+Log in to NetEase to read your cloud drive.	请登录网易云以读取云盘。
+Unable to load the NetEase cloud drive. Please retry or log in again.	无法加载网易云云盘，请重试或重新登录。
+The NetEase cloud drive repeated a page. Please retry.	网易云云盘返回了重复分页，请重试。
+The NetEase cloud drive returned too many pages.	网易云云盘返回的分页过多。
+NetEase returned an audio format that this player does not support yet.	网易云返回了播放器尚不支持的音频格式。
+
+Android detected. If music playback causes FPS drops, try appending -Ddangomusic.openal=true to your launcher's JVM arguments (separated from other arguments by a space), then restart the game.	检测到你是安卓玩家。如果播放音乐时掉帧，可点击复制 -Ddangomusic.openal=true，并追加到启动器的 JVM 参数末尾（与其他参数用空格隔开），保存后重启游戏。
+Click to copy JVM argument	点击复制 JVM 参数
+
+Only uploads matched to QQ Music's catalog are shown. Original unmatched files are not supported.	仅显示已匹配 QQ 音乐曲库的云盘歌曲，暂不支持未匹配的原始文件。
+Cloud uploads support MP3, Ogg Vorbis and FLAC. Private cloud tracks cannot be shared in Listen Together.	云盘支持 MP3、Ogg Vorbis、FLAC；私人云盘歌曲暂不支持一起听。
+Log in to QQ Music to read your cloud drive.	请登录 QQ 音乐以读取云盘。
+QQ Music returned incomplete cloud data. Please retry.	QQ 音乐返回的云盘数据不完整，请重试。
+QQ Music repeated a cloud page. Please retry.	QQ 音乐云盘返回了重复分页，请重试。
+QQ Music returned too many cloud pages. Please retry.	QQ 音乐云盘分页过多，请重试。
+Log in to Kugou to read your cloud drive.	请登录酷狗以读取云盘。
+Log in to Kugou to play your cloud uploads.	请登录酷狗以播放云盘歌曲。
+Kugou cloud request failed. Please retry or log in again.	酷狗云盘请求失败，请重试或重新登录。
+Kugou returned incomplete cloud data. Please retry.	酷狗返回的云盘数据不完整，请重试。
+Kugou repeated a cloud page. Please retry.	酷狗云盘返回了重复分页，请重试。
+Kugou returned too many cloud pages. Please retry.	酷狗云盘分页过多，请重试。
+This cloud audio format is not supported. Only MP3, Ogg Vorbis and FLAC are supported.	暂不支持这首云盘歌曲的音频格式，目前仅支持 MP3、Ogg Vorbis 和 FLAC。
+No playable cloud audio was returned. Check this upload in the official Kugou client.	未取得可播放的云盘音频，请在酷狗官方客户端检查这首上传歌曲。
+Private Kugou cloud tracks cannot be shared in Listen Together. Leave the room to play them.	酷狗私人云盘歌曲暂不支持一起听，请退出房间后播放。
+Switch away from the private Kugou cloud track before creating a room.	请先切换到非酷狗私人云盘歌曲，再创建房间。
+No cloud songs to display	没有可显示的云盘歌曲

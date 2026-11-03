@@ -38,7 +38,7 @@ object ListenParty {
 
     enum class Role { NONE, HOST, MEMBER }
 
-    class Member(val uid: String, val name: String, val lastSeen: Long)
+    class Member(val uid: String, val name: String, val lastSeen: Long, val failedTrack: String = "")
 
     private class RemoteState(
         val track: NeteaseTrack,
@@ -100,6 +100,7 @@ object ListenParty {
                         Role.MEMBER -> followTick()
                         Role.NONE -> {}
                     }
+                    reportPlayback()
                     if (role != Role.NONE && System.currentTimeMillis() - lastHeartbeat > HEARTBEAT_MS) heartbeat()
                 } catch (e: InterruptedException) {
                     return@Thread
@@ -137,6 +138,10 @@ object ListenParty {
 
     fun create() {
         if (busy || role != Role.NONE) return
+        if (MusicPlayer.current?.let { me.sorihiko.dango.music.CloudDrives.privateTrack(it) } == true) {
+            status = "Switch away from the private Kugou cloud track before creating a room."
+            return
+        }
         busy = true
         status = "正在创建房间…"
         worker.execute {
@@ -265,6 +270,7 @@ object ListenParty {
         roomProtocol = 1
         requestedKey = ""
         MusicPlayer.followMode = false
+        reportedRoom = ""
     }
 
     /** 成员：重新和房主对齐（自己点了别的歌之后想回来时用） */
@@ -290,6 +296,10 @@ object ListenParty {
     /** 成员点了一首歌：本地先开始加载（快一点），同时请房主切过去 */
     fun requestPlay(track: NeteaseTrack) {
         if (!canControl || !supportsSource(track.source)) return
+        if (me.sorihiko.dango.music.CloudDrives.privateTrack(track)) {
+            status = "Private Kugou cloud tracks cannot be shared in Listen Together. Leave the room to play them."
+            return
+        }
         requestedKey = track.key
         MusicPlayer.playTrackAt(track, { 0L }, false)
         lastCorrection = System.currentTimeMillis() + 4000
@@ -388,7 +398,7 @@ object ListenParty {
         members = (room.get("members") as? JsonObject)?.entrySet()?.mapNotNull { (uid, v) ->
             val o = v as? JsonObject ?: return@mapNotNull null
             val seen = o.get("lastSeen")?.let { if (it.isJsonPrimitive) it.asLong else 0L } ?: 0L
-            if (now - seen > MEMBER_TIMEOUT_MS) null else Member(uid, o.get("name")?.asString ?: "?", seen)
+            if (now - seen > MEMBER_TIMEOUT_MS) null else Member(uid, o.get("name")?.asString ?: "?", seen, o.get("failedTrack")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty())
         }?.sortedBy { if (it.uid == hostUid) 0 else 1 } ?: emptyList()
 
         val st = room.get("state") as? JsonObject
@@ -416,6 +426,25 @@ object ListenParty {
         }
     }
 
+    @Volatile private var reportedRoom = ""
+    private var reportedFailure = ""
+    private var lastReport = 0L
+
+    /** 只同步歌曲引用和失败状态，不发送平台错误文本、账号或会员信息。 */
+    private fun reportPlayback() {
+        val c = code
+        if (role == Role.NONE || c.isEmpty()) { reportedRoom = ""; return }
+        if (reportedRoom != c) { reportedRoom = c; reportedFailure = ""; lastReport = 0L }
+        val failure = if (MusicPlayer.state == MusicPlayer.State.ERROR) MusicPlayer.current?.key.orEmpty() else ""
+        val now = System.currentTimeMillis()
+        if (failure == reportedFailure || now - lastReport < 5000) return
+        lastReport = now
+        val net = transport
+        val result = net.patch("rooms/$c/members/${net.uid}", JsonObject().apply { addProperty("failedTrack", failure) })
+        if (result != null && code == c) reportedFailure = failure
+        else lastReport = now + 55000 // 旧规则或网络故障时每分钟最多重试一次。
+    }
+
     private fun heartbeat() {
         lastHeartbeat = System.currentTimeMillis()
         val c = code
@@ -433,6 +462,7 @@ object ListenParty {
         }
         val cur = MusicPlayer.current ?: return
         if (!supportsSource(cur.source)) return
+        if (me.sorihiko.dango.music.CloudDrives.privateTrack(cur)) return
         val st = MusicPlayer.state
         val now = System.currentTimeMillis()
         if (st == MusicPlayer.State.LOADING || st == MusicPlayer.State.ERROR) {

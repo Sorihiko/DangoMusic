@@ -126,7 +126,12 @@ void main() {
 
     private fun compile(type: Int, src: String): Int {
         val id = GL20.glCreateShader(type)
-        GL20.glShaderSource(id, src)
+        // LWJGL 2 的字符串重载会截掉中文字符的高字节，“一”会变成 NUL，让驱动提前读到源码末尾。
+        // 其余着色器也走字节缓冲；这里明确用 UTF-8，保留中文注释且不引入中途终止符。
+        val bytes = src.toByteArray(Charsets.UTF_8)
+        val source = BufferUtils.createByteBuffer(bytes.size)
+        source.put(bytes).flip()
+        GL20.glShaderSource(id, source)
         GL20.glCompileShader(id)
         if (GL20.glGetShaderi(id, GL20.GL_COMPILE_STATUS) == GL11.GL_FALSE) {
             val log = GL20.glGetShaderInfoLog(id, 4096)

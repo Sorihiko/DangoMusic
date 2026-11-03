@@ -4,6 +4,7 @@ import me.sorihiko.dango.i18n.I18n
 
 import me.sorihiko.dango.DangoClient
 import me.sorihiko.dango.music.CoverCache
+import me.sorihiko.dango.music.CloudDrives
 import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.MusicScreen
 import me.sorihiko.dango.music.MusicSource
@@ -187,6 +188,12 @@ internal class TracksPage(private val screen: MusicScreen) {
             ui.text(I18n.format("No songs match \"%s\"", filterText), area.x + 12f, area.y + 20f, 12f, Theme.TEXT_TERTIARY)
             return
         }
+        if (list.isEmpty() && ScreenState.page == Page.PLAYLIST &&
+            ScreenState.opened?.id == CloudDrives.id(MusicSources.selected) &&
+            !partiallyLoaded() && Library.status.isEmpty()) {
+            ui.text(I18n.text("No cloud songs to display"), area.x + 12f, area.y + 20f, 12f, Theme.TEXT_TERTIARY)
+            return
+        }
         drawViews(area, tracks, list)
     }
 
@@ -344,6 +351,13 @@ internal class TracksPage(private val screen: MusicScreen) {
 
         // 歌单内筛选框（按歌名 / 歌手，输入即筛选）
         if (tracks != null && state.page != Page.SEARCH) drawFilter(rightX, y) else filterRect = LayoutBounds()
+        if (state.page == Page.PLAYLIST && p?.id == CloudDrives.id(MusicSources.selected)) {
+            val note = CloudDrives.note(MusicSources.selected)
+            if (note.isNotEmpty()) {
+                ui.text(ui.trim(I18n.text(note), page.right - x - 8f, 10f), x, y + 99f, 10f, Theme.TEXT_SECONDARY)
+                headerH = max(headerH, 126f)
+            }
+        }
         return headerH
     }
 

@@ -322,6 +322,26 @@ internal object McCompat {
     /** 原版开始画界面之前（只有 26.x 用到） */
     fun beforeGui() {}
 
+    /** 只有参数本身可点击，复制值不包含提示、引号或额外空格。 */
+    private fun copyableChatMessage(message: String, copyText: String, copyHint: String): Component {
+        val at = message.indexOf(copyText)
+        if (copyText.isEmpty() || at < 0) return Component.literal(message)
+        val link = Component.literal(copyText).withStyle { style ->
+            val clickable = style.withColor(net.minecraft.ChatFormatting.AQUA).withUnderlined(true)
+                .withClickEvent(net.minecraft.network.chat.ClickEvent.CopyToClipboard(copyText))
+            if (copyHint.isEmpty()) clickable else clickable.withHoverEvent(net.minecraft.network.chat.HoverEvent.ShowText(Component.literal(copyHint)))
+        }
+        return Component.literal(message.substring(0, at)).append(link).append(message.substring(at + copyText.length))
+    }
+
+    /** 玩家进入世界后显示本地提示，不发送服务器聊天。 */
+    fun showChatMessage(message: String, copyText: String, copyHint: String): Boolean {
+        val client = Minecraft.getInstance()
+        if (client.player == null) return false
+        client.gui.chat.addMessage(copyableChatMessage(message, copyText, copyHint))
+        return true
+    }
+
     /** 不能用 OpenGL 时提示玩家（这些版本一定能用） */
     fun notifyNoGl(again: Boolean = false) {}
 

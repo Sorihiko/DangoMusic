@@ -56,6 +56,7 @@ dependencies {
     shade("me.sorihiko.dango:ui:$modVersion")
     shade(kotlin("stdlib"))
     shade("javazoom:jlayer:1.0.1")
+    shade("org.jcraft:jorbis:0.0.17")
     shade("com.google.zxing:core:3.3.3")
 }
 
@@ -87,6 +88,7 @@ val shadowJar = tasks.named<ShadowJar>("shadowJar") {
     relocate("org.intellij.lang.annotations", "me.sorihiko.dango.shadow.annotations.intellij")
     relocate("org.jetbrains.annotations", "me.sorihiko.dango.shadow.annotations.jetbrains")
     relocate("javazoom", "me.sorihiko.dango.shadow.javazoom")
+    relocate("com.jcraft", "me.sorihiko.dango.shadow.jcraft")
     relocate("com.google.zxing", "me.sorihiko.dango.shadow.zxing")
     // Java 9+ 的模块描述文件，Forge 1.8.9 的老 ASM 读不了
     exclude("module-info.class", "META-INF/versions/**", "META-INF/*.kotlin_module")

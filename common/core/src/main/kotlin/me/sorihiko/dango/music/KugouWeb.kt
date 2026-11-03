@@ -29,9 +29,9 @@ internal object KugouWeb {
     fun get(path: String, params: Map<String, String>, device: String, cookies: CookieManager): JsonObject =
         AuthHttp.request(MusicSource.KUGOU, path + "?" + AuthHttp.form(signed(params, device)), cookies).json()
 
-    fun songInfo(track: NeteaseTrack, account: NativeAccount): JsonObject {
+    fun songInfo(track: NeteaseTrack, account: NativeAccount, metadata: Boolean = true): JsonObject {
         val result = get("https://wwwapi.kugou.com/play/songinfo",
-            mapOf("hash" to track.nativeId, "album_id" to track.albumId, "platid" to "4", "userid" to account.userId, "token" to account.token,
+            mapOf("hash" to track.nativeId, "album_id" to (if (metadata) track.albumId else ""), "platid" to "4", "userid" to account.userId, "token" to account.token,
                 "dfid" to NativeAccounts.cookie(account.cookies, "kg_dfid").ifEmpty { "-" }), account.deviceId, account.cookies)
         if (result.number("err_code") == 30020L) throw SourceAccessException("Kugou requires additional security verification. Please try again later.")
         return result

@@ -39,8 +39,15 @@ internal object Library {
         private set
     @Volatile var playlistsLoading = false
         private set
-    @Volatile var status = ""
-        private set
+    // 文本和期限一起发布，避免后台加载结果被旧提示的到期逻辑清掉。
+    private class Status(val text: String, val expiresAt: Long = 0L)
+    @Volatile private var statusState = Status("")
+    var status: String
+        get() {
+            val value = statusState
+            return if (value.expiresAt != 0L && System.nanoTime() - value.expiresAt >= 0L) "" else value.text
+        }
+        private set(value) { statusState = Status(value) }
     @Volatile var recommend: List<NeteasePlaylist>? = null
         private set
     @Volatile var recommendLoading = false
@@ -194,6 +201,10 @@ internal object Library {
     }
 
     fun showStatus(message: String) { status = message }
+
+    fun showTemporaryStatus(message: String, durationMs: Long) {
+        statusState = Status(message, System.nanoTime() + durationMs.coerceIn(0L, 60_000L) * 1_000_000L)
+    }
 
     // 网易云红心：列表在后台拉，点了在后台改
     @Volatile private var likedCheckedAt = 0L

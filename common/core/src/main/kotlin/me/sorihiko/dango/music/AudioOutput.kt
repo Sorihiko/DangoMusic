@@ -46,24 +46,44 @@ interface AudioOutput {
 
 /** 电脑上默认的输出：Java Sound 的声卡线路 */
 class JavaSoundOutput(private val line: SourceDataLine) : AudioOutput {
+    @Volatile private var softwareVolume = 1f
+    private var scaled = ByteArray(0)
     override val positionMicros: Long get() = line.microsecondPosition
     override val isRunning: Boolean get() = line.isRunning
 
     override fun start() = line.start()
     override fun stop() = line.stop()
     override fun write(data: ByteArray, offset: Int, length: Int) {
-        line.write(data, offset, length)
+        val volume = softwareVolume
+        if (volume == 1f) {
+            line.write(data, offset, length)
+        } else {
+            require(length % 2 == 0 && offset >= 0 && length >= 0 && offset <= data.size - length)
+            if (scaled.size < length) scaled = ByteArray(length)
+            var i = 0
+            while (i < length) {
+                val sample = ((data[offset+i].toInt() and 255) or (data[offset+i+1].toInt() shl 8)).toShort().toInt()
+                val adjusted = (sample * volume).toInt().coerceIn(-32768, 32767)
+                scaled[i] = adjusted.toByte(); scaled[i+1] = (adjusted shr 8).toByte()
+                i += 2
+            }
+            line.write(scaled, 0, length)
+        }
     }
     override fun drain() = line.drain()
     override fun flush() = line.flush()
     override fun close() = line.close()
 
     override fun setVolume(volume: Float) {
+        val requested = if (volume.isFinite()) volume.coerceIn(0f, 1f) else 0f
         try {
             val gain = line.getControl(FloatControl.Type.MASTER_GAIN) as FloatControl
-            val db = if (volume <= 0.0001f) gain.minimum else (20.0 * log10(volume.toDouble())).toFloat()
+            val db = if (requested <= 0.0001f) gain.minimum else (20.0 * log10(requested.toDouble())).toFloat()
             gain.value = db.coerceIn(gain.minimum, gain.maximum)
+            softwareVolume = 1f
         } catch (_: Exception) {
+            // Some formats/devices expose no gain control. The user's volume must still apply.
+            softwareVolume = requested
         }
     }
 }

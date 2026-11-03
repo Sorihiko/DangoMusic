@@ -184,6 +184,60 @@ object NeteaseApi {
         return ids.mapNotNull { known[it] }
     }
 
+    fun lyrics(track: NeteaseTrack): me.sorihiko.dango.lyrics.Lyrics? = NeteaseLyrics(
+        cloud = { id ->
+            if (!loggedIn) null else {
+                val uid = resolveUser()
+                if (uid <= 0) null else NeteasePlayerRequest.cloudLyric(JsonObject().apply {
+                    addProperty("userId", uid); addProperty("songId", id)
+                    addProperty("lv", -1); addProperty("kv", -1)
+                }, cookieHeader())
+            }
+        },
+        catalog = { me.sorihiko.dango.lyrics.LyricsProvider.neteaseLyricById(it) },
+        lookup = { current -> cloudDetails(listOf(current.cloudId.takeIf { it > 0 } ?: current.id)).firstOrNull {
+            it.id == current.id || it.cloudId == (current.cloudId.takeIf { value -> value > 0 } ?: current.id)
+        } },
+    ).resolve(track)
+
+    const val CLOUD_ID = -163_003L
+
+    /** 云盘分页保留上传标记；边加载边交给现有歌单界面。 */
+    fun cloudTracks(): List<NeteaseTrack> {
+        if (!loggedIn) throw SourceAccessException("Log in to NetEase to read your cloud drive.")
+        val songs = LinkedHashMap<Long, NeteaseTrack>()
+        var offset = 0
+        repeat(400) {
+            val root = account("https://music.163.com/weapi/v1/cloud/get", JsonObject().apply { addProperty("limit", 200); addProperty("offset", offset) })
+                ?: throw SourceAccessException("Unable to load the NetEase cloud drive. Please retry or log in again.")
+            val rows = root.array("data")
+            var added = 0
+            for (row in rows) if (row.isJsonObject) NeteaseTrack.parse(row.asJsonObject)?.let {
+                it.cloud = true
+                if (songs.put(it.id, it) == null) added++
+            }
+            TrackLoadProgress.report(songs.size, root.number("count").toInt())
+            val more = root.get("hasMore")?.takeIf { it.isJsonPrimitive }?.asBoolean ?: (rows.size() == 200)
+            if (!more || rows.size() == 0) return songs.values.toList()
+            if (added == 0) throw SourceAccessException("The NetEase cloud drive repeated a page. Please retry.")
+            TrackLoadProgress.partial(songs.values.toList())
+            offset += rows.size()
+        }
+        throw SourceAccessException("The NetEase cloud drive returned too many pages.")
+    }
+
+    fun cloudDetails(ids: List<Long>): List<NeteaseTrack> {
+        if (!loggedIn || ids.isEmpty()) return emptyList()
+        val results = ArrayList<NeteaseTrack>()
+        for (batch in ids.chunked(200)) {
+            val root = account("https://music.163.com/weapi/v1/cloud/get/byids", JsonObject().apply {
+                add("songIds", com.google.gson.JsonArray().apply { batch.forEach { add(com.google.gson.JsonPrimitive(it.toString())) } })
+            }) ?: throw SourceAccessException("Unable to load the NetEase cloud drive. Please retry or log in again.")
+            results += tracksOf(root.getAsJsonArray("data")).onEach { it.cloud = true }
+        }
+        return results
+    }
+
     /** 首页推荐歌单（不需要登录） */
     fun recommendPlaylists(): List<NeteasePlaylist> {
         val o = getJson("https://music.163.com/api/personalized/playlist?limit=30") ?: return emptyList()
@@ -398,34 +452,48 @@ object NeteaseApi {
 
     /**
      * 播放地址。登录后能拿到账号有权限的完整音频；拿不到时退回网易云外链（只对免费歌曲有效）。
-     * 只要 mp3（内置解码器只支持 mp3）。
+     * 优先新版 exhigh；只接受播放器支持的 MP3 / Vorbis。
      */
-    fun songUrl(id: Long): SongUrl? {
-        playerUrl(id)?.let { return it }
-        // 这首被下架 / 变灰了：网易云自己会推荐同一首歌的另一个版本，能放就换过去
-        alternativeVersion(id)?.let { alt ->
-            playerUrl(alt)?.let { found ->
-                DangoLogger.info("NetEase song {} unavailable, playing alternative version {}", id, alt)
-                return SongUrl(found.url, found.trialOnly, found.gainDb, found.peak, replaced = true)
+    fun songUrl(id: Long): SongUrl? = songUrl(NeteaseTrack(id, "", emptyList(), 0, ""))
+
+    fun songUrl(track: NeteaseTrack): SongUrl? {
+        if (track.cloud) {
+            // 同一云盘条目可能同时给上传标识和曲库标识；不能按歌名猜测另一个版本。
+            var info = track
+            if (track.cloudId == 0L || track.cloudId == track.id) {
+                try {
+                    info = cloudDetails(listOf(track.cloudId.takeIf { it > 0 } ?: track.id))
+                        .firstOrNull { it.id == track.id || it.cloudId == track.id || (track.cloudId > 0 && it.cloudId == track.cloudId) } ?: track
+                } catch (_: Exception) { DangoLogger.warn("NetEase cloud detail lookup failed") }
             }
+            val upload = info.cloudId.takeIf { it > 0 } ?: info.id
+            val aliases = listOf(info.id, upload).distinct()
+            var preview: SongUrl? = null
+            var unsupported: SourceAccessException? = null
+            for (id in listOf(upload, info.id).distinct()) {
+                val result = try { playerUrl(id, aliases) } catch (e: SourceAccessException) {
+                    if (e.message != "NetEase returned an audio format that this player does not support yet.") throw e
+                    unsupported = e
+                    null
+                } ?: continue
+                if (!result.trialOnly) return result
+                if (preview == null) preview = result
+            }
+            if (preview != null) return preview
+            unsupported?.let { throw it }
+        } else playerUrl(track.id)?.let { return it }
+        // 私人上传没有公共曲库替代项；换成另一首会让用户误以为自己的上传播放成功。
+        if (track.cloud) throw SourceAccessException("No playable cloud audio was returned. Check this upload in the official NetEase client.")
+        alternativeVersion(track.id)?.let { alt ->
+            playerUrl(alt)?.let { found -> return SongUrl(found.url, found.trialOnly, found.gainDb, found.peak, replaced = true) }
         }
-        return SongUrl("https://music.163.com/song/media/outer/url?id=$id.mp3", false)
+        return SongUrl("https://music.163.com/song/media/outer/url?id=${track.id}.mp3", false)
     }
 
-    private fun playerUrl(id: Long): SongUrl? {
-        try {
-            val o = getJson("https://music.163.com/api/song/enhance/player/url?ids=" + enc("[$id]") + "&br=192000")
-            val d = o?.getAsJsonArray("data")?.firstOrNull() as? JsonObject
-            val url = d?.get("url")?.let { if (it.isJsonNull) null else it.asString }
-            val type = d?.get("type")?.let { if (it.isJsonNull) "" else it.asString.lowercase() } ?: ""
-            val trial = d?.get("freeTrialInfo")?.let { !it.isJsonNull } ?: false
-            fun number(key: String) = d?.get(key)?.takeIf { it.isJsonPrimitive }?.asString?.toFloatOrNull()?.takeIf { it.isFinite() } ?: 0f
-            if (!url.isNullOrEmpty() && (type.isEmpty() || type == "mp3")) return SongUrl(url, trial, number("gain"), number("peak"))
-        } catch (e: Exception) {
-            DangoLogger.warn("NetEase song url failed: {}", e.toString())
-        }
-        return null
-    }
+    private fun playerUrl(id: Long, aliases: List<Long> = emptyList()): SongUrl? = NeteasePlayback({ stage, body ->
+        if (stage == "v1") NeteasePlayerRequest.post(body, cookieHeader())
+        else getJson("https://music.163.com/api/song/enhance/player/url?ids=" + enc("[$id]") + "&br=192000")
+    }, loggedIn).resolve(id, aliases)
 
     /** 变灰的歌（privileges.st < 0）里网易云推荐的替代版本 id；没有就是 null */
     private fun alternativeVersion(id: Long): Long? = try {

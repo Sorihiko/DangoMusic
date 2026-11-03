@@ -15,6 +15,7 @@
             ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($code).exists()",
             ".validate": "$uid.length <= 128 && newData.hasChildren(['lastSeen'])",
             "name": { ".validate": "newData.isString() && newData.val().length <= 64" },
+            "failedTrack": { ".validate": "newData.isString() && newData.val().length <= 256" },
             "lastSeen": { ".validate": "newData.isNumber()" },
             "$other": { ".validate": false }
           }

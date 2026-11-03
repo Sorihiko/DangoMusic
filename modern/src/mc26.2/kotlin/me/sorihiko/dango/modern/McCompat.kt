@@ -218,6 +218,25 @@ internal object McCompat {
 
     private var lastNoGlNotice = 0L
 
+    /** 只有参数本身可点击，复制值不包含提示、引号或额外空格。 */
+    private fun copyableChatMessage(message: String, copyText: String, copyHint: String): Component {
+        val at = message.indexOf(copyText)
+        if (copyText.isEmpty() || at < 0) return Component.literal(message)
+        val link = Component.literal(copyText).withStyle { style ->
+            val clickable = style.withColor(net.minecraft.ChatFormatting.AQUA).withUnderlined(true)
+                .withClickEvent(net.minecraft.network.chat.ClickEvent.CopyToClipboard(copyText))
+            if (copyHint.isEmpty()) clickable else clickable.withHoverEvent(net.minecraft.network.chat.HoverEvent.ShowText(Component.literal(copyHint)))
+        }
+        return Component.literal(message.substring(0, at)).append(link).append(message.substring(at + copyText.length))
+    }
+
+    /** 玩家进入世界后显示本地提示，不发送服务器聊天。 */
+    fun showChatMessage(message: String, copyText: String, copyHint: String): Boolean {
+        val player = mc.player ?: return false
+        player.sendSystemMessage(copyableChatMessage(message, copyText, copyHint))
+        return true
+    }
+
     /**
      * 不能用 OpenGL 时在聊天栏提示：进游戏时提示一次；[again] = true（按了打开播放器的键）时再提示，
      * 不然按 M 没反应，玩家不知道为什么（两秒内只提示一次，免得连按刷屏）

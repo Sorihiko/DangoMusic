@@ -135,6 +135,6 @@
 
 使用各音乐平台的非官方接口，仅供个人学习交流，歌曲版权归各平台和版权方所有。
 
-第三方：[Inter](https://github.com/rsms/inter)（OFL 1.1）、[JLayer](https://central.sonatype.com/artifact/javazoom/jlayer/1.0.1)（LGPL）、[ZXing](https://github.com/zxing/zxing)（Apache 2.0）、Kotlin 标准库（Apache 2.0）。
+第三方：[Inter](https://github.com/rsms/inter)（OFL 1.1）、[JLayer](https://central.sonatype.com/artifact/javazoom/jlayer/1.0.1)（LGPL）、[JOrbis / Jogg](https://github.com/ymnk/jorbis)（LGPL 2.0+）、[ZXing](https://github.com/zxing/zxing)（Apache 2.0）、Kotlin 标准库（Apache 2.0）。
 
 许可证：[GPL-3.0](LICENSE)

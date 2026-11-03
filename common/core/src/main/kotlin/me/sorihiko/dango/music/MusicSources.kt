@@ -30,11 +30,12 @@ object MusicSources {
     private val netease = object : MusicSourceApi {
         override val source = MusicSource.NETEASE
         override fun search(query: String) = NeteaseApi.search(query)
-        override fun songUrl(track: NeteaseTrack) = NeteaseApi.songUrl(track.id)
-        override fun lyrics(track: NeteaseTrack) = LyricsProvider.neteaseLyricById(track.id)
+        override fun songUrl(track: NeteaseTrack) = NeteaseApi.songUrl(track)
+        override fun lyrics(track: NeteaseTrack) = NeteaseApi.lyrics(track)
         override fun playlists(): List<NeteasePlaylist> {
             NeteaseApi.ensureCookieFile()
-            return NeteaseApi.userPlaylists()
+            val lists = NeteaseApi.userPlaylists()
+            return if (NeteaseApi.loggedIn) lists + NeteasePlaylist(NeteaseApi.CLOUD_ID, me.sorihiko.dango.i18n.I18n.text("Cloud drive"), 0, "", false) else lists
         }
         override fun recommend(): List<NeteasePlaylist> {
             // 登录了就在最前面放"每日推荐""私人 FM"（拿不到不影响下面的推荐歌单）
@@ -48,6 +49,7 @@ object MusicSources {
         override fun playlistTracks(id: Long) = when (id) {
             NeteaseApi.DAILY_ID -> NeteaseApi.dailySongs()
             NeteaseApi.FM_ID -> NeteaseApi.personalFm()
+            NeteaseApi.CLOUD_ID -> NeteaseApi.cloudTracks()
             else -> NeteaseApi.playlistTracks(id)
         }
     }

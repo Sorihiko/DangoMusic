@@ -26,7 +26,7 @@ class Lyrics(rawLines: List<LyricLine>, val sourceName: String) {
             val t = text.filter { it.isLetterOrDigit() }.lowercase()
             if (t.isEmpty()) return false
             return t == "纯音乐" || t.startsWith("纯音乐请欣赏") || "没有填词的纯音乐" in t ||
-                t == "instrumental" || t == "纯音乐请您欣赏"
+                t == "instrumental" || t == "纯音乐请您欣赏" || t == "暂无歌词"
         }
     }
 

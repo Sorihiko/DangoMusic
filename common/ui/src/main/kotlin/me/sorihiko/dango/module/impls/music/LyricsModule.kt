@@ -255,16 +255,26 @@ class LyricsModule : Module() {
         return NowPlaying(t, MusicPlayer.state == MusicPlayer.State.PLAYING)
     }
 
+    private val notFoundAt = ConcurrentHashMap<String, Long>()
+
     private fun lyricsFor(key: String): Lyrics? = cache[key] as? Lyrics
 
     private fun requestLyrics(s: NowPlaying) {
         val key = s.key
+        if (cache[key] === NotFound) {
+            val failedAt = notFoundAt[key] ?: 0L
+            if (System.nanoTime() - failedAt < 30_000_000_000L) return
+            cache.remove(key, NotFound)
+        }
         if (cache.containsKey(key) || !pending.add(key)) return
         val track = s.track
         fetcher.execute {
             try {
-                cache[key] = me.sorihiko.dango.music.MusicSources.api(track.source).lyrics(track) ?: NotFound
+                val result = me.sorihiko.dango.music.MusicSources.api(track.source).lyrics(track)
+                if (result == null) notFoundAt[key] = System.nanoTime() else notFoundAt.remove(key)
+                cache[key] = result ?: NotFound
             } catch (_: Exception) {
+                notFoundAt[key] = System.nanoTime()
                 cache[key] = NotFound
             } finally {
                 pending.remove(key)
@@ -288,6 +298,7 @@ class LyricsModule : Module() {
             return
         }
         lastSeenNanos = now
+        requestLyrics(s)
         val p = MusicPlayer.positionMs.toDouble()
         if (s.key != currentKey) {
             currentKey = s.key
@@ -295,7 +306,6 @@ class LyricsModule : Module() {
             active?.let { startFade(it) }
             active = null
             lastIndex = -1
-            requestLyrics(s)
         } else {
             if (abs(p - songPos) > 300) lastIndex = -1   // 拖了进度条
             songPos = p
@@ -870,8 +880,10 @@ class LyricsModule : Module() {
             return
         }
         val platform = DangoClient.platform
-        val player = platform.player ?: return
+        if (platform.player == null) return
         val world = DangoClient.gfx.world
+        val view = world.cameraAngles()
+        if (!view.yaw.isFinite() || !view.pitch.isFinite()) return
 
         // 移动得快（鞘翅、骑马、矿车）时歌词跟着一起走：只靠转角度的弹簧追不上，会被甩出屏幕。
         // 走路和疾跑（每秒 8 格以内）照旧固定在世界里；每秒 8 到 14 格之间逐渐变成完全跟着走。
@@ -943,14 +955,14 @@ class LyricsModule : Module() {
 
             val curYaw = Math.toDegrees(atan2(-rx, rz))
             val curPitch = Math.toDegrees(asin((-ry / len).coerceIn(-1.0, 1.0)))
-            val dYaw = wrapDegrees(curYaw - player.yaw)
-            val dPitch = curPitch - player.pitch
+            val dYaw = wrapDegrees(curYaw - view.yaw)
+            val dPitch = curPitch - view.pitch
 
             // 往下最多到哪：屏幕下边，以及（Above ground）不低于地面高度，哪个更靠上用哪个
             var lowLim = vLim
             if (!groundFloor.isNaN()) {
                 val floorPitch = Math.toDegrees(asin(((world.cameraY - groundFloor) / len).coerceIn(-1.0, 1.0)))
-                lowLim = min(lowLim, floorPitch - player.pitch)
+                lowLim = min(lowLim, floorPitch - view.pitch)
             }
             val tYaw = dYaw.coerceIn(-hLim, hLim)
             val tPitch = if (lowLim >= -vLim) dPitch.coerceIn(-vLim, lowLim) else lowLim

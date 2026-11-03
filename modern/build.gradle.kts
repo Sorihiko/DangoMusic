@@ -89,6 +89,7 @@ subprojects {
         "shade"("me.sorihiko.dango:ui:$modVersion")
         "shade"(kotlin("stdlib"))
         "shade"("javazoom:jlayer:1.0.1")
+        "shade"("org.jcraft:jorbis:0.0.17")
         "shade"("com.google.zxing:core:3.3.3")
     }
 
@@ -113,6 +114,7 @@ subprojects {
         relocate("org.intellij.lang.annotations", "me.sorihiko.dango.shadow.annotations.intellij")
         relocate("org.jetbrains.annotations", "me.sorihiko.dango.shadow.annotations.jetbrains")
         relocate("javazoom", "me.sorihiko.dango.shadow.javazoom")
+        relocate("com.jcraft", "me.sorihiko.dango.shadow.jcraft")
         relocate("com.google.zxing", "me.sorihiko.dango.shadow.zxing")
         exclude("module-info.class", "META-INF/versions/**", "META-INF/*.kotlin_module")
         // META-INF/versions 已经去掉了，就不能再声明 Multi-Release，

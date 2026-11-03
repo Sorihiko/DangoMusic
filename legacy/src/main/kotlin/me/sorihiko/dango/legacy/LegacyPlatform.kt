@@ -67,6 +67,10 @@ object LegacyPlatform : Platform {
 
     override val skyDarken: Int? get() = mc.theWorld?.skylightSubtracted
 
+    // 旧版没有方块标签，同时识别树叶类和树叶材质，避免树冠产生室内回声。
+    private fun isAcousticLeaves(block: net.minecraft.block.Block): Boolean =
+        block is net.minecraft.block.BlockLeaves || block.material == net.minecraft.block.material.Material.leaves
+
     private val absorptionCache = java.util.IdentityHashMap<net.minecraft.block.Block, Float>()
 
     override fun soundAbsorption(x: Int, y: Int, z: Int): Float {
@@ -74,7 +78,7 @@ object LegacyPlatform : Platform {
         val block = world.getBlockState(net.minecraft.util.BlockPos(x, y, z)).block
         return absorptionCache.getOrPut(block) {
             val material = block.material
-            if (material.isLiquid || !material.blocksMovement()) -1f else when (block.stepSound) {
+            if (isAcousticLeaves(block) || material.isLiquid || !material.blocksMovement()) -1f else when (block.stepSound) {
                 net.minecraft.block.Block.soundTypeStone, net.minecraft.block.Block.soundTypePiston -> 0.03f
                 net.minecraft.block.Block.soundTypeMetal, net.minecraft.block.Block.soundTypeAnvil -> 0.04f
                 net.minecraft.block.Block.soundTypeGlass -> 0.05f
@@ -107,7 +111,7 @@ object LegacyPlatform : Platform {
                 for (step in 1..6) {
                     val pos = net.minecraft.util.BlockPos(p.posX + dir[0] * step, eyeY + dir[1] * step, p.posZ + dir[2] * step)
                     val block = world.getBlockState(pos).block
-                    if (!world.isAirBlock(pos) && !block.material.isLiquid) {
+                    if (!world.isAirBlock(pos) && !block.material.isLiquid && !isAcousticLeaves(block)) {
                         hits++
                         break
                     }
@@ -127,6 +131,12 @@ object LegacyPlatform : Platform {
             val p = mc.thePlayer ?: return null
             return PlayerPose(p.posX, p.posY + p.getEyeHeight(), p.posZ, p.rotationYaw, p.rotationPitch)
         }
+
+    override fun showChatMessage(message: String, copyText: String, copyHint: String): Boolean {
+        val player = mc.thePlayer ?: return false
+        player.addChatMessage(LegacyChatCopy.message(message, copyText, copyHint))
+        return true
+    }
 
     override fun openMusicScreen() {
         mc.displayGuiScreen(LegacyMusicScreen(mc.currentScreen))
