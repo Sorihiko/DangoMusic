@@ -38,6 +38,7 @@ public class DangoMusicForge {
         static void init() {
             FMLJavaModLoadingContext.get().getModEventBus().addListener(Client::onRegisterKeys);
             ModernDango.start();
+            PartyNetwork.register();
             MinecraftForge.EVENT_BUS.addListener(Client::onClientTick);
             MinecraftForge.EVENT_BUS.addListener(Client::onRenderLevel);
             MinecraftForge.EVENT_BUS.addListener(Client::onMenuDraw);

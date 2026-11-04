@@ -507,6 +507,75 @@ object NeteaseApi {
         null
     }
 
+    // ---------------------------------------------------------------- 歌手 / 专辑
+
+    /** 专辑当成歌单打开：ID 换成很小的负数，不会和真的歌单、上面那几个特殊 ID 撞 */
+    private const val ALBUM_BASE = -1_000_000_000_000L
+
+    fun albumPlaylistId(albumId: Long): Long = ALBUM_BASE - albumId
+
+    fun albumIdOf(playlistId: Long): Long? =
+        if (playlistId <= ALBUM_BASE && playlistId > ALBUM_BASE * 2) ALBUM_BASE - playlistId else null
+
+    private fun JsonObject.int(key: String): Int =
+        get(key)?.takeIf { it.isJsonPrimitive }?.let { try { it.asInt } catch (_: Exception) { 0 } } ?: 0
+
+    /** 歌手信息和热门歌曲（不用登录） */
+    fun artist(id: Long): SourceArtist? {
+        val o = getJson("https://music.163.com/api/v1/artist/$id") ?: return null
+        val a = o.get("artist") as? JsonObject ?: return null
+        val alias = ArrayList<String>()
+        (a.get("alias") as? com.google.gson.JsonArray)?.forEach { if (it.isJsonPrimitive) it.asString.takeIf { s -> s.isNotBlank() }?.let(alias::add) }
+        a.str("trans").takeIf { it.isNotBlank() && it !in alias }?.let(alias::add)
+        return SourceArtist(
+            source = MusicSource.NETEASE,
+            id = id.toString(),
+            name = a.str("name"),
+            picUrl = a.str("picUrl").ifEmpty { a.str("img1v1Url") },
+            alias = alias,
+            brief = a.str("briefDesc").trim(),
+            songCount = a.int("musicSize"),
+            albumCount = a.int("albumSize"),
+            hotSongs = tracksOf(o.getAsJsonArray("hotSongs")),
+        )
+    }
+
+    /** 歌手的专辑（新的在前），当成歌单列出来；最多拿 300 张 */
+    fun artistAlbums(id: Long): List<NeteasePlaylist> {
+        val out = ArrayList<NeteasePlaylist>()
+        var offset = 0
+        while (offset < 300) {
+            val o = getJson("https://music.163.com/api/artist/albums/$id?limit=100&offset=$offset") ?: break
+            val arr = o.getAsJsonArray("hotAlbums") ?: break
+            for (el in arr) {
+                if (!el.isJsonObject) continue
+                val al = el.asJsonObject
+                val albumId = al.str("id").toLongOrNull() ?: continue
+                out += NeteasePlaylist(albumPlaylistId(albumId), al.str("name"), al.int("size"), al.str("picUrl"), false)
+            }
+            if (arr.size() == 0 || o.get("more")?.takeIf { it.isJsonPrimitive }?.asBoolean != true) break
+            offset += arr.size()
+        }
+        return out
+    }
+
+    /** 专辑里的歌（歌曲自己没带封面的用专辑封面） */
+    fun albumTracks(albumId: Long): List<NeteaseTrack> {
+        val o = getJson("https://music.163.com/api/v1/album/$albumId") ?: return emptyList()
+        val cover = (o.get("album") as? JsonObject)?.str("picUrl").orEmpty()
+        return tracksOf(o.getAsJsonArray("songs")).onEach { if (it.coverUrl.isEmpty()) it.coverUrl = cover }
+    }
+
+    /** 按名字找歌手 ID（歌曲里没带歌手 ID 时用）：名字完全一样的优先，没有就取第一个；找不到返回 0 */
+    fun findArtist(name: String): Long {
+        if (name.isBlank()) return 0L
+        val o = getJson("https://music.163.com/api/cloudsearch/pc?s=" + enc(name.trim()) + "&type=100&offset=0&limit=10") ?: return 0L
+        val list = (o.get("result") as? JsonObject)?.getAsJsonArray("artists") ?: return 0L
+        val found = list.mapNotNull { if (it.isJsonObject) it.asJsonObject else null }
+        val exact = found.firstOrNull { it.str("name").equals(name.trim(), ignoreCase = true) } ?: found.firstOrNull()
+        return exact?.str("id")?.toLongOrNull() ?: 0L
+    }
+
     // ---------------------------------------------------------------- HTTP
 
     private fun enc(s: String) = java.net.URLEncoder.encode(s, "UTF-8")

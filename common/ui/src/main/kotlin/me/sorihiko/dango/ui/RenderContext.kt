@@ -65,7 +65,9 @@ data class FontStyle(
 data class ShadowStyle(
     val color: Color = Color.BLACK,
     val size: Float = 0f,
-    val offset: Vec2 = Vec2(0f, 0f)
+    val offset: Vec2 = Vec2(0f, 0f),
+    /** 只画在形状外面（像网页的 box-shadow）：半透明的块加光晕时，光不会从块里面透出来 */
+    val outside: Boolean = false,
 )
 
 data class Vec2(val x: Float, val y: Float)

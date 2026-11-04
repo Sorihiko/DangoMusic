@@ -35,8 +35,6 @@ import me.sorihiko.dango.update.UpdateChecker
 @ModuleMeta(Category.MUSIC, "NeteaseMusic")
 class NeteaseMusicModule : Module() {
 
-    private val androidPlaybackHint = me.sorihiko.dango.music.AndroidPlaybackHint()
-
     @ModuleValue("Music source", "Select a music provider")
     private val musicSource = IntValue(0, 2, 0)
 
@@ -47,6 +45,36 @@ class NeteaseMusicModule : Module() {
 
     @ModuleValue("Volume", "Playback volume")
     private val volume = FloatValue(0f, 1f, 0.2f, 2)
+
+    @ModuleValue("Audio output", "Where the music plays through")
+    // 0 自动（安卓用游戏的 OpenAL，电脑用 Java Sound），1 Java Sound，2 游戏的 OpenAL
+    private val audioOutput = IntValue(0, 2, 0)
+
+    // 播放器窗口的位置和大小：占屏幕的比例（换分辨率 / GUI 缩放也不会跑到屏幕外）；宽为 0 = 默认大小。
+    // 拖窗口边缘时改，设置页里不显示
+    @ModuleValue("Window X", "")
+    private val windowX = FloatValue(0f, 1f, 0f, 4)
+    @ModuleValue("Window Y", "")
+    private val windowY = FloatValue(0f, 1f, 0f, 4)
+    @ModuleValue("Window width", "")
+    private val windowW = FloatValue(0f, 1f, 0f, 4)
+    @ModuleValue("Window height", "")
+    private val windowH = FloatValue(0f, 1f, 0f, 4)
+
+    /** 玩家拖过的窗口位置大小 [x, y, 宽, 高]（占屏幕比例）；没拖过是 null */
+    fun windowFrame(): FloatArray? =
+        if (windowW.value <= 0f || windowH.value <= 0f) null
+        else floatArrayOf(windowX.value, windowY.value, windowW.value, windowH.value)
+
+    /** 记下窗口位置大小；null = 恢复默认 */
+    fun setWindowFrame(frame: FloatArray?) {
+        if (frame == null) {
+            windowW.setValue(0f)
+            windowH.setValue(0f)
+            return
+        }
+        windowX.setValue(frame[0]); windowY.setValue(frame[1]); windowW.setValue(frame[2]); windowH.setValue(frame[3])
+    }
 
     @ModuleValue("Language", "Choose the player interface language")
     // -1：尚未根据游戏语言初始化。早期 Fabric 入口处 Options 可能仍为空。
@@ -271,7 +299,6 @@ class NeteaseMusicModule : Module() {
     fun onTick(e: TickEvent) {
         // 即使播放器被关闭，也要初始化并保存界面语言。
         applyLanguage()
-        androidPlaybackHint.tick(DangoMusic.instance.platform)
         MusicSources.selected = MusicSource.values()[musicSource.value]
         DangoMusic.instance.platform.syncKeyBindings(keyBindings)
         UpdateChecker.tick(checkUpdates.get())
@@ -279,6 +306,7 @@ class NeteaseMusicModule : Module() {
         // 歌词模块一直开着（显示与否由 3D lyrics 控制）；等配置读回之后再检查
         if (++tickCount > 5) lyrics()?.let { if (!it.enabled) it.enabled = true }
         MusicPlayer.volume = volume.value
+        MusicPlayer.outputMode = audioOutput.value
         MusicPlayer.shuffle = shuffle.get()
 
         MusicPlayer.repeatOne = repeatOne.get()

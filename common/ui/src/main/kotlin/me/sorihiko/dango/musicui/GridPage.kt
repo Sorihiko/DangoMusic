@@ -46,13 +46,19 @@ internal class GridPage(private val screen: MusicScreen) {
         drawGrid(area, items)
     }
 
+    /** 只画封面墙（歌手页的专辑用，标题自己画） */
+    fun drawItems(area: LayoutBounds, items: List<NeteasePlaylist>) {
+        this.area = area
+        drawGrid(area, items)
+    }
+
     private fun drawGrid(area: LayoutBounds, items: List<NeteasePlaylist>) {
         val gap = 22f
         val cols = max(2, ((area.width + gap) / (160f + gap)).toInt())
         val cw = (area.width - gap * (cols - 1)) / cols
         val rowH = cw + 46f
         val totalRows = (items.size + cols - 1) / cols
-        maxScroll = max(0f, totalRows * rowH - area.height)
+        maxScroll = max(0f, totalRows * rowH + ui.bottomInset - area.height)
         target = target.coerceIn(0f, maxScroll)
         pos = pos.coerceIn(0f, maxScroll)
 

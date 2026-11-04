@@ -80,6 +80,8 @@ object ModernGfx : Gfx {
         try {
             block()
         } finally {
+            VanillaTextBatch.flush()
+            VanillaTextBatch.enabled = false
             Fixed.reset()
             state.restore()
         }
@@ -200,7 +202,12 @@ object ModernText : TextCanvas {
             // 阴影的颜色和位置照原版算（unicode 字形的阴影只偏 0.5）
             val shadowColor = ((argb and 0xFCFCFC) shr 2) or (argb and 0xFF000000.toInt())
             val offset = if (text.all { it.code < 0x2E80 }) 1f else 0.5f
-            ModernGfx.vanillaText(text, x + offset, y + offset, shadowColor, false, Fixed.pose)
+            if (VanillaTextBatch.enabled) VanillaTextBatch.add(text, x + offset, y + offset, shadowColor, Fixed.pose, shadow = true)
+            else ModernGfx.vanillaText(text, x + offset, y + offset, shadowColor, false, Fixed.pose)
+        }
+        if (VanillaTextBatch.enabled) {
+            VanillaTextBatch.add(text, x, y, argb, Fixed.pose, shadow = false)
+            return
         }
         ModernGfx.vanillaText(text, x, y, argb, false, Fixed.pose)
         reapply()
@@ -217,6 +224,8 @@ object ModernText : TextCanvas {
     private var screenProjection: Projection? = null
 
     override fun beginScreen() {
+        VanillaTextBatch.flush()
+        VanillaTextBatch.enabled = false
         screenState = GlState()
         val window = Minecraft.getInstance().window
         screenProjection = Projection.screen(window.width.toFloat(), window.height.toFloat())
@@ -233,6 +242,45 @@ object ModernText : TextCanvas {
         screenProjection = null
         screenState?.restore()
         screenState = null
+    }
+}
+
+// ---------------------------------------------------------------- 原版点阵字合批
+
+/** 一段要交给原版画的点阵字（[pose] 是抄下来的，之后 Fixed 再变也不影响） */
+internal class VanillaText(val text: String, val x: Float, val y: Float, val argb: Int, val pose: Matrix4f)
+
+/**
+ * 世界里的歌词用原版点阵字时，每个字（动画要一个字一个字地画）都单独交给原版画一次的话，
+ * 每次都要换帧缓冲、让原版收尾一批，开销都花在这些切换上（实测歌词每帧多 1 毫秒左右）。
+ * 这里先攒起来，等到要画别的东西、换帧缓冲或者这一段画完时，再一起交给原版：阴影一批、字一批。
+ */
+internal object VanillaTextBatch {
+    /** 只在画世界里的歌词时攒（屏幕 / HUD 上的字投影马上会换掉，照旧马上画） */
+    var enabled = false
+
+    private val shadows = ArrayList<VanillaText>()
+    private val texts = ArrayList<VanillaText>()
+    private var flushing = false
+
+    fun add(text: String, x: Float, y: Float, argb: Int, pose: Matrix4f, shadow: Boolean) {
+        if (text.isEmpty()) return
+        (if (shadow) shadows else texts) += VanillaText(text, x, y, argb, Matrix4f(pose))
+    }
+
+    /** 攒着的字现在画掉：先画全部阴影，再画字（分两批，阴影就不会被排序到字上面） */
+    fun flush() {
+        if (flushing || (shadows.isEmpty() && texts.isEmpty())) return
+        flushing = true
+        try {
+            if (shadows.isNotEmpty()) McCompat.drawTexts(shadows)
+            if (texts.isNotEmpty()) McCompat.drawTexts(texts)
+        } finally {
+            shadows.clear()
+            texts.clear()
+            flushing = false
+        }
+        ModernText.reapply()
     }
 }
 
@@ -262,6 +310,7 @@ object ModernWorld : WorldView {
         Fixed.reset(basePose)
         worldState()
         ModernText.reapply = { worldState() }
+        VanillaTextBatch.enabled = McCompat.batchesText
     }
 
     override fun push(rx: Double, ry: Double, rz: Double, yaw: Float, pitch: Float, scale: Float) {
@@ -295,6 +344,8 @@ object ModernHud : HudCanvas {
     }
 
     override fun begin() {
+        VanillaTextBatch.flush()
+        VanillaTextBatch.enabled = false
         state = GlState()
         val window = Minecraft.getInstance().window
         projection = Projection.screen(window.guiScaledWidth.toFloat(), window.guiScaledHeight.toFloat())

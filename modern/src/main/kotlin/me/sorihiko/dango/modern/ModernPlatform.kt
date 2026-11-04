@@ -127,6 +127,8 @@ object ModernPlatform : Platform {
     override fun openAudioOutput(sampleRate: Int, channels: Int): me.sorihiko.dango.music.AudioOutput? =
         GameAudioOutput.open(sampleRate, channels)
 
+    override val hasGameAudio: Boolean get() = true
+
     override val player: PlayerPose?
         get() {
             val p = mc.player ?: return null

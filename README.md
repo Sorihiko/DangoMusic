@@ -24,10 +24,11 @@
 - **三个音源**：网易云 / QQ 音乐 / 酷狗，都在游戏内扫码登录（会员歌曲需要对应平台的会员）
 - **歌词**：逐字歌词，3D 歌词漂浮在世界里，带发光、抖动、文闪等效果
 - **Song card / 灵动岛**：屏幕上显示正在播放
-- **一起听歌**：分享房间码，所有人同步到同一首歌、同一秒；不在同一个服务器、不是同一个 MC 版本也能一起听，国内网络也能用
+- **歌手页**：点歌手名看热门歌曲、专辑和简介
+- **一起听歌**：分享房间码，所有人同步到同一首歌、同一秒；局域网 / 内网穿透联机时直接经房主的游戏同步，不用 Firebase、不用代理；不在同一个服务器、不是同一个 MC 版本也能经 Firebase 一起听
 - 设置都在播放器侧栏的 ⚙ 里，可以绑定快捷键
 
-更新内容见 [1.7.2 更新日志](docs/CHANGELOG-1.7.2.md)。
+更新内容见 [1.7.3 更新日志](docs/CHANGELOG-1.7.3.md)。
 
 ## 安装
 
@@ -74,6 +75,7 @@
             ".write": "auth != null && auth.uid === $uid && root.child('rooms').child($code).exists()",
             ".validate": "$uid.length <= 128 && newData.hasChildren(['lastSeen'])",
             "name": { ".validate": "newData.isString() && newData.val().length <= 64" },
+            "failedTrack": { ".validate": "newData.isString() && newData.val().length <= 256" },
             "lastSeen": { ".validate": "newData.isNumber()" },
             "$other": { ".validate": false }
           }
@@ -110,6 +112,7 @@
           "duration": { ".validate": "newData.isNumber()" },
           "pos": { ".validate": "newData.isNumber()" },
           "at": { ".validate": "newData.isNumber()" },
+          "tracks": { ".validate": "newData.isString() && newData.val().length <= 600000" },
           "$other": { ".validate": false }
         },
         "$other": { ".validate": false }
@@ -126,7 +129,7 @@
 }
 ```
 
-不配置也能构建，只是一起听歌不可用；只有连同一个 Firebase 项目的人才能一起听。
+不配置也能构建：局域网 / 内网穿透联机时照样能经房主的游戏一起听，只是不在同一个服务器时没法一起听；只有连同一个 Firebase 项目的人才能经 Firebase 一起听。
 
 不想用 Firebase、想自己架服务器的，可以看第三方的自建服务端 [dango-party-server](https://github.com/Tea-chabai/dango-party-server)（非官方维护）。
 </details>

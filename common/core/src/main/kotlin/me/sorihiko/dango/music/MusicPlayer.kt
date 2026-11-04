@@ -36,6 +36,14 @@ object MusicPlayer {
     /** 0..1 */
     @Volatile var volume = 0.2f
 
+    /** 声音从哪里放：0 自动（安卓用游戏的 OpenAL，电脑用 Java Sound），1 Java Sound，2 游戏的 OpenAL。换了就从当前位置重新开始放 */
+    @Volatile var outputMode = OUTPUT_AUTO
+        set(v) {
+            if (field == v) return
+            field = v
+            if (state == State.PLAYING) seekLocal(positionMs)
+        }
+
     private val loader = Executors.newSingleThreadExecutor { r -> Thread(r, "Dango-MusicLoader").apply { isDaemon = true } }
     private val radioWorker = Executors.newSingleThreadExecutor { r -> Thread(r, "Dango-MusicRadio").apply { isDaemon = true } }
 
@@ -95,11 +103,26 @@ object MusicPlayer {
 
     private val party get() = me.sorihiko.dango.party.ListenParty
 
+    /** 一起听：房主关了"允许成员控制"时被拦下的时间（界面据此提示一下） */
+    @Volatile var blockedNotice = 0L
+        private set
+
+    /**
+     * 一起听的成员、房主没开"允许成员控制"：不能自己切歌 / 暂停 / 拖进度（只跟着房主听），拦下来并提示。
+     * 跟随房主用的是 [playTrackAt] / [syncTo]，不经过这里
+     */
+    private fun lockedByHost(): Boolean {
+        if (party.role != me.sorihiko.dango.party.ListenParty.Role.MEMBER || party.canControl) return false
+        blockedNotice = System.nanoTime()
+        return true
+    }
+
     @Synchronized @JvmOverloads fun playQueue(tracks: List<NeteaseTrack>, startIndex: Int, radio: (() -> List<NeteaseTrack>)? = null) {
+        if (lockedByHost()) return
         if (tracks.isNotEmpty() && !canPlay(tracks[Math.floorMod(startIndex, tracks.size)])) return
-        // 一起听的成员：交给房主去放
+        // 一起听的成员：整个列表交给房主去放（房主换成这个列表，从这首开始）
         if (party.canControl) {
-            if (tracks.isNotEmpty()) party.requestPlay(tracks[Math.floorMod(startIndex, tracks.size)])
+            if (tracks.isNotEmpty()) party.requestPlayList(tracks, Math.floorMod(startIndex, tracks.size))
             return
         }
         queue = tracks
@@ -113,6 +136,7 @@ object MusicPlayer {
         private set
 
     @Synchronized fun playIndex(i: Int) {
+        if (lockedByHost()) return
         failedTracks.clear()
         playIndexInternal(i)
     }
@@ -220,6 +244,7 @@ object MusicPlayer {
     }
 
     fun next() {
+        if (lockedByHost()) return
         if (party.canControl) return party.requestNext()
         val q = queue
         if (q.isEmpty()) return
@@ -233,6 +258,7 @@ object MusicPlayer {
     }
 
     fun prev() {
+        if (lockedByHost()) return
         if (party.canControl) return party.requestPrev()
         if (positionMs > 3000) {
             seek(0)
@@ -248,6 +274,7 @@ object MusicPlayer {
     }
 
     fun togglePause() {
+        if (lockedByHost()) return
         // 一起听的成员：本地先生效，再告诉房主
         if (party.canControl && (state == State.PLAYING || state == State.PAUSED)) {
             party.requestState(if (state == State.PLAYING) me.sorihiko.dango.party.PartyRequest.PAUSE
@@ -275,6 +302,7 @@ object MusicPlayer {
 
     fun seek(ms: Long) {
         if (audio == null) return
+        if (lockedByHost()) return
         if (party.canControl) party.requestState(me.sorihiko.dango.party.PartyRequest.SEEK, ms.coerceIn(0L, max(0L, durationMs - 500)))
         seekLocal(ms)
     }
@@ -386,17 +414,48 @@ object MusicPlayer {
     private val forceOpenAl = java.lang.Boolean.getBoolean("dangomusic.openal")
     private var loggedOutput = ""
 
+    /** 这次该先试游戏的 OpenAL 吗 */
+    private fun preferGameAudio(): Boolean = when (outputMode) {
+        OUTPUT_JAVA_SOUND -> false
+        OUTPUT_GAME -> true
+        // 安卓上 Java Sound 是模拟出来的，放歌会掉帧；电脑上 Java Sound 不占游戏的声音通道，更稳
+        else -> forceOpenAl || AndroidRuntime.detected || !AudioOutput.javaSoundNative
+    }
+
     /**
-     * 打开声音输出：Java 自己带声音库时用 Java Sound（电脑上都是这样）；
-     * 不带（安卓）或者强制时先用游戏的 OpenAL，打不开再退回 Java Sound；Java Sound 打不开也试一下 OpenAL。
+     * 打开声音输出：按 [outputMode] 先试游戏的 OpenAL 或 Java Sound，打不开再换另一个。
      */
     private fun openOutput(format: AudioFormat, bufferBytes: Int): AudioOutput {
-        if (forceOpenAl || !AudioOutput.javaSoundNative) platformOutput(format)?.let { return it }
+        if (preferGameAudio()) platformOutput(format)?.let { return it }
         return try {
             JavaSoundOutput(openLine(format, bufferBytes)).also { logOutput("Java Sound") }
         } catch (e: Throwable) {
             platformOutput(format) ?: throw e
         }
+    }
+
+    /**
+     * 声音系统重启后重新打开输出。游戏要一会儿才能把声音系统开回来，最多等几秒；
+     * 原来用的是游戏的 OpenAL 就继续等它，等不到再按平常的顺序打开。
+     */
+    private fun reopenOutput(gen: Int, old: AudioOutput, rate: Int, channels: Int): AudioOutput? {
+        DangoLogger.info("Dango Music: game audio restarted, reopening output")
+        try { old.close() } catch (_: Exception) {}
+        val format = AudioFormat(rate.toFloat(), 16, channels, true, false)
+        var out: AudioOutput? = null
+        val deadline = System.currentTimeMillis() + 5000L
+        while (out == null && gen == generation && System.currentTimeMillis() < deadline) {
+            out = platformOutput(format)
+            if (out == null) Thread.sleep(100)
+        }
+        if (gen != generation) {
+            try { out?.close() } catch (_: Exception) {}
+            return null
+        }
+        if (out == null) out = openOutput(format, rate * channels * 2 / 4)
+        line = out
+        if (state == State.PAUSED) out.stop() else out.start()
+        return out
     }
 
     private fun platformOutput(format: AudioFormat): AudioOutput? = try {
@@ -551,14 +610,28 @@ object MusicPlayer {
                     data[k * 2] = (v and 0xFF).toByte()
                     data[k * 2 + 1] = ((v shr 8) and 0xFF).toByte()
                 }
-                out.write(data, 0, data.size)
+                try {
+                    out.write(data, 0, data.size)
+                } catch (e: Throwable) {
+                    if (!out.lost || gen != generation) throw e
+                    // 游戏重启了声音系统：换一个新的输出，从这一块接着放（缓冲里没放完的零点几秒丢掉）
+                    val reopened = reopenOutput(gen, out, frame.rate, frame.channels) ?: throw e
+                    out = reopened
+                    seekBaseMs = (decodedMs - frameMs).toLong()
+                    appliedVolume = -1f
+                    if (reopened.lost) throw e
+                    reopened.setVolume(volume)
+                    appliedVolume = volume
+                    reopened.write(data, 0, data.size)
+                }
             }
             if (finished && out == null && gen == generation) {
                 finished = false
                 fail(gen, "No decodable audio was found.")
             }
             if (finished && gen == generation) {
-                out?.drain()
+                // 最后一点正在放的时候声音系统重启了：就当放完了
+                try { out?.drain() } catch (e: Throwable) { if (out?.lost != true) throw e }
                 synchronized(this) { if (gen == generation) failedTracks.clear() }
             }
         } catch (e: Throwable) {
@@ -600,4 +673,9 @@ object MusicPlayer {
         } catch (_: Exception) {
         }
     }
+
+    const val OUTPUT_AUTO = 0
+    const val OUTPUT_JAVA_SOUND = 1
+    const val OUTPUT_GAME = 2
+
 }

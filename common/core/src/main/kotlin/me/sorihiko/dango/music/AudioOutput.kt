@@ -31,6 +31,9 @@ interface AudioOutput {
     /** 音量 0..1（线性振幅） */
     fun setVolume(volume: Float)
 
+    /** 输出没了（游戏重启了声音系统：F3+T、换了耳机 / 输出设备），要重新打开一个接着放 */
+    val lost: Boolean get() = false
+
     companion object {
         /**
          * 这个 Java 自己带不带声音库（jsound）。安卓的 Java 不带：这时用 Java Sound 要靠启动器的转接，

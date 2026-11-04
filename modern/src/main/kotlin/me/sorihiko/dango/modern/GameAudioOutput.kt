@@ -38,6 +38,8 @@ class GameAudioOutput private constructor(
 
     @Volatile private var running = false
     @Volatile private var closed = false
+    /** 声音系统重启前最后一次读到的播放位置 */
+    private var lastPositionMicros = 0L
 
     init {
         check(AL10.alGetError() == AL10.AL_NO_ERROR) { "OpenAL source unavailable" }
@@ -46,20 +48,25 @@ class GameAudioOutput private constructor(
     override val positionMicros: Long
         get() = synchronized(lock) {
             if (closed) return 0L
+            if (!alive()) return lastPositionMicros
             val offset = AL10.alGetSourcei(source, AL11.AL_SAMPLE_OFFSET).toLong()
-            (playedFrames + offset) * 1_000_000L / sampleRate
+            ((playedFrames + offset) * 1_000_000L / sampleRate).also { lastPositionMicros = it }
         }
+
+    override val lost: Boolean get() = !closed && !alive()
+
+    private fun alive() = ALC10.alcGetCurrentContext() == context
 
     override val isRunning: Boolean get() = running
 
     override fun start() = synchronized(lock) {
         running = true
-        if (!closed && queuedFrames.isNotEmpty()) AL10.alSourcePlay(source)
+        if (!closed && alive() && queuedFrames.isNotEmpty()) AL10.alSourcePlay(source)
     }
 
     override fun stop() = synchronized(lock) {
         running = false
-        if (!closed) AL10.alSourcePause(source)
+        if (!closed && alive()) AL10.alSourcePause(source)
     }
 
     override fun write(data: ByteArray, offset: Int, length: Int) {
@@ -98,6 +105,7 @@ class GameAudioOutput private constructor(
         while (true) {
             synchronized(lock) {
                 if (closed) return null
+                checkContext()
                 reclaim()
                 freeBuffers.removeFirstOrNull()?.let { return it }
                 if (createdBuffers < BUFFERS) {
@@ -118,7 +126,7 @@ class GameAudioOutput private constructor(
         }
     }
 
-    /** 游戏重启了声音系统（F3+T、换了输出设备）：原来的音源已经没了，这首歌停下 */
+    /** 游戏重启了声音系统（F3+T、换了输出设备）：原来的音源已经没了，抛出去让播放器换一个新的输出接着放 */
     private fun checkContext() {
         check(ALC10.alcGetCurrentContext() == context) { "Game audio was restarted" }
     }
@@ -131,6 +139,7 @@ class GameAudioOutput private constructor(
         while (true) {
             synchronized(lock) {
                 if (closed) return
+                checkContext()
                 reclaim()
                 if (queuedFrames.isEmpty()) return
                 if (running && AL10.alGetSourcei(source, AL10.AL_SOURCE_STATE) != AL10.AL_PLAYING) AL10.alSourcePlay(source)
@@ -142,9 +151,10 @@ class GameAudioOutput private constructor(
     override fun flush() {
         synchronized(lock) {
             if (closed) return
+            pending.clear()
+            if (!alive()) return
             AL10.alSourceStop(source)
             reclaim()
-            pending.clear()
         }
     }
 
@@ -169,7 +179,7 @@ class GameAudioOutput private constructor(
     }
 
     override fun setVolume(volume: Float) = synchronized(lock) {
-        if (!closed) AL10.alSourcef(source, AL10.AL_GAIN, volume.coerceIn(0f, 1f))
+        if (!closed && alive()) AL10.alSourcef(source, AL10.AL_GAIN, volume.coerceIn(0f, 1f))
     }
 
     companion object {

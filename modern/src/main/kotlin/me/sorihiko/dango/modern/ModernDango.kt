@@ -46,9 +46,20 @@ object ModernDango {
      * （Forge 那边会让歌词左右反过来），自己算两边结果一致，和原版画实体用的完全相同。
      * 画的期间把原版的视图矩阵设成单位矩阵，镜头转向只算这一次。
      */
+    /**
+     * 原版画世界前把投影矩阵（含视角摇晃）交给显卡的那一刻，mixin 把它抄一份过来。
+     * 有了这份就不用每帧再从显存读回来（读显存要等显卡把手上的活干完，会掉帧）
+     */
+    @JvmStatic
+    fun worldProjection(projection: org.joml.Matrix4fc) {
+        McCompat.captureWorldProjection(projection)
+    }
+
     @JvmStatic
     fun worldRenderEnd() {
         if (!started || !McCompat.glAvailable) return
+        // 每帧都会画世界（各版本都走这里），在这里数帧、按时报性能
+        Perf.frame()
         ModernWorld.basePose.identity()
             .rotateX(Math.toRadians(McCompat.cameraXRot().toDouble()).toFloat())
             .rotateY(Math.toRadians(McCompat.cameraYRot().toDouble() + 180.0).toFloat())
@@ -92,7 +103,6 @@ object ModernDango {
     @JvmStatic
     fun beforeGui() {
         if (!started || !McCompat.glAvailable) return
-        Perf.frame()
         Perf.begin("screen")
         McCompat.beforeGui()
         Imm.flush()

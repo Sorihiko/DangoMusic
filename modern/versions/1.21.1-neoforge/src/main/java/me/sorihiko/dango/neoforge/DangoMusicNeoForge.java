@@ -28,6 +28,7 @@ public class DangoMusicNeoForge {
     public DangoMusicNeoForge(IEventBus modBus) {
         modBus.addListener((RegisterKeyMappingsEvent event) -> ModernKeyBindings.register(event::register));
         ModernDango.start();
+        PartyNetwork.register(modBus);
         NeoForge.EVENT_BUS.addListener(DangoMusicNeoForge::onClientTick);
         NeoForge.EVENT_BUS.addListener(DangoMusicNeoForge::onRenderLevel);
         NeoForge.EVENT_BUS.addListener(DangoMusicNeoForge::onMenuDraw);

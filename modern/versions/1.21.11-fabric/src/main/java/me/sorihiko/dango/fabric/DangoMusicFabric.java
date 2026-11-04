@@ -17,6 +17,7 @@ public class DangoMusicFabric implements ClientModInitializer {
     public void onInitializeClient() {
         ModernKeyBindings.register(KeyBindingHelper::registerKeyBinding);
         ModernDango.start();
+        PartyNetwork.register();
         ClientTickEvents.START_CLIENT_TICK.register(client -> ModernDango.tick());
     }
 }

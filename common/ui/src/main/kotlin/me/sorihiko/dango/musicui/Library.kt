@@ -10,11 +10,21 @@ import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.MusicSourceApi
 import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.SourceAccessException
+import me.sorihiko.dango.music.SourceArtist
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
-internal enum class Page { HOME, CHARTS, PLAYLIST, SEARCH, QUEUE, PARTY, SETTINGS }
+internal enum class Page { HOME, CHARTS, PLAYLIST, SEARCH, QUEUE, PARTY, SETTINGS, ARTIST }
+
+/** 点进歌手页、从歌手页点进专辑之前的界面，返回时一层层退回去 */
+internal class PageSnapshot(
+    val page: Page,
+    val opened: NeteasePlaylist?,
+    val backPage: Page?,
+    val artist: ArtistRef?,
+    val lastQuery: String,
+)
 
 /** 关掉播放器再打开时还保留的界面状态 */
 internal object ScreenState {
@@ -27,6 +37,10 @@ internal object ScreenState {
     /** 歌单页显示方式：false = 列表，true = 封面墙 */
     var coverView = false
     var lastQuery = ""
+    /** 歌手页显示的歌手 */
+    var artist: ArtistRef? = null
+    /** 进歌手页 / 从歌手页进专辑时记下来的上一层（最多记 20 层） */
+    val trail = ArrayDeque<PageSnapshot>()
 
     // 液态玻璃画布（和菜单同一套），第一次打开播放器时创建
     var context: GuiCanvas? = null
@@ -228,5 +242,69 @@ internal object Library {
             if (!ok) status = if (like) "Could not add to Liked songs. Please retry." else "Could not remove from Liked songs. Please retry."
         }
     }
+    // ---------------------------------------------------------------- 歌手（各音源的歌手页）
+
+    /** 缓存的键：音源 + 歌手 ID */
+    private fun artistKey(source: MusicSource, id: String) = "${source.key}:$id"
+
+    private val artists = ConcurrentHashMap<String, SourceArtist>()
+    private val artistAlbumLists = ConcurrentHashMap<String, List<NeteasePlaylist>>()
+    private val artistLoading = ConcurrentHashMap.newKeySet<String>()
+    private val artistFailedIds = ConcurrentHashMap.newKeySet<String>()
+    /** 按名字找到的歌手 ID（"" = 没找到） */
+    private val artistIds = ConcurrentHashMap<String, String>()
+    private val artistResolving = ConcurrentHashMap.newKeySet<String>()
+
+    fun artist(source: MusicSource, id: String): SourceArtist? = artists[artistKey(source, id)]
+    fun artistAlbums(source: MusicSource, id: String): List<NeteasePlaylist>? = artistAlbumLists[artistKey(source, id)]
+    fun artistFailed(source: MusicSource, id: String): Boolean = artistFailedIds.contains(artistKey(source, id))
+
+    /** 后台拉歌手信息，拿到后再拉专辑（已经有了或者正在拉就不重复） */
+    fun loadArtist(source: MusicSource, id: String) {
+        val key = artistKey(source, id)
+        if (artists.containsKey(key) || artistFailedIds.contains(key) || !artistLoading.add(key)) return
+        val api = MusicSources.api(source)
+        worker.execute {
+            try {
+                val info = api.artist(id)
+                if (info == null) {
+                    artistFailedIds.add(key)
+                } else {
+                    artists[key] = info
+                    artistAlbumLists[key] = try { api.artistAlbums(id) } catch (e: Exception) {
+                        me.sorihiko.dango.DangoLogger.warn("{} artist albums failed: {}", source.key, e.toString())
+                        emptyList()
+                    }
+                }
+            } catch (e: Exception) {
+                me.sorihiko.dango.DangoLogger.warn("{} artist load failed: {}", source.key, e.toString())
+                artistFailedIds.add(key)
+            } finally {
+                artistLoading.remove(key)
+            }
+        }
+    }
+
+    /** 歌手 ID：还在按名字找时返回 null，找不到返回 "" */
+    fun artistIdFor(source: MusicSource, name: String): String? {
+        val key = artistKey(source, name)
+        artistIds[key]?.let { return it }
+        if (artistResolving.add(key)) {
+            val api = MusicSources.api(source)
+            worker.execute {
+                val id = try { api.findArtist(name) } catch (_: Exception) { "" }
+                artistIds[key] = id
+                artistResolving.remove(key)
+            }
+        }
+        return null
+    }
+
+    /** 加载失败后点了重试 */
+    fun retryArtist(source: MusicSource, name: String, id: String?) {
+        if (id.isNullOrEmpty()) artistIds.remove(artistKey(source, name))
+        else artistFailedIds.remove(artistKey(source, id))
+    }
+
     private fun publicError(error: Exception) = if (error is SourceAccessException) error.message.orEmpty() else "Source unavailable. Please retry."
 }

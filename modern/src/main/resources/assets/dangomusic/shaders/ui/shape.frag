@@ -13,6 +13,8 @@ uniform vec4 u_BorderColor;
 uniform vec4 u_ShadowColor;
 uniform float u_ShadowSize;
 uniform vec2 u_ShadowOffset;
+// 1 = 光晕只画在形状外面
+uniform float u_ShadowOutside;
 
 uniform float u_Opacity;
 
@@ -32,6 +34,8 @@ void main() {
     float fillAlpha = 1.0 - smoothstep(-aa, 0.0, fillDist);
 
     vec4 shapeColor = u_FillColor * fillAlpha;
+    // 形状（含边框）外缘的距离：光晕只画外面时用
+    float shapeDist = fillDist;
 
     float hasRadius = step(0.1, u_Radius);
     if (u_BorderWidth > 0.0) {
@@ -39,6 +43,7 @@ void main() {
         float rectOuterDist = sdRoundBox(local - center, center + vec2(u_BorderWidth), 0.0);
         float outerDist = mix(rectOuterDist, expandedDist, hasRadius);
 
+        shapeDist = outerDist;
         float outerAlpha = 1.0 - smoothstep(-aa, 0.0, outerDist);
         vec4 rawColor = mix(u_BorderColor, u_FillColor, fillAlpha);
         shapeColor = rawColor * outerAlpha;
@@ -53,6 +58,7 @@ void main() {
         float shadowDist = mix(shadowDistRect, shadowDistRound, hasRadius);
 
         float shadowMask = 1.0 - smoothstep(0.0, u_ShadowSize, shadowDist);
+        shadowMask *= mix(1.0, smoothstep(-aa, 0.0, shapeDist), u_ShadowOutside);
         float shadowAlpha = shadowMask * u_ShadowColor.a;
         shadowColor = vec4(u_ShadowColor.rgb * shadowAlpha, shadowAlpha);
     }

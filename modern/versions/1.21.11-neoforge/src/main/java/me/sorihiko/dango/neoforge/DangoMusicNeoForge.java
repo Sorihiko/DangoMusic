@@ -26,6 +26,7 @@ public class DangoMusicNeoForge {
 
     public DangoMusicNeoForge(IEventBus modBus) {
         modBus.addListener((RegisterKeyMappingsEvent event) -> ModernKeyBindings.register(event::register));
+        PartyNetwork.register(modBus);
         // 这个版本的 NeoForge 加载 mod 时游戏本体（Minecraft）还没创建，
         // 读配置文件夹等都要用到它，所以等第一个游戏 tick 再启动
         NeoForge.EVENT_BUS.addListener(DangoMusicNeoForge::onClientTick);

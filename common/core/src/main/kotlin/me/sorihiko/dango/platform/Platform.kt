@@ -92,6 +92,9 @@ interface Platform {
      * 声音是 16 位有符号小端 PCM；打不开返回 null。
      */
     fun openAudioOutput(sampleRate: Int, channels: Int): me.sorihiko.dango.music.AudioOutput? = null
+
+    /** [openAudioOutput] 能不能用（设置里要不要显示"音频输出"） */
+    val hasGameAudio: Boolean get() = false
 }
 
 /**

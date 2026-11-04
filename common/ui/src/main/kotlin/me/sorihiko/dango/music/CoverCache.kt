@@ -162,6 +162,9 @@ object CoverCache {
 
     fun trackRounded(t: NeteaseTrack, ratio: Float = ROUND) = rounded("t:${t.key}", t.coverUrl, ratio)
 
+    /** 已经下载好的原图（取颜色用，渲染线程调用）；还没下好是 null */
+    fun image(key: String): BufferedImage? = sources[key]
+
     /** 四个角挖成圆角（抗锯齿：边缘按覆盖率给透明度） */
     private fun roundCorners(src: BufferedImage, ratio: Float): BufferedImage {
         val w = src.width

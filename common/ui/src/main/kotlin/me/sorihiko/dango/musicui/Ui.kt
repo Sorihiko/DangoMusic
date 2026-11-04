@@ -94,7 +94,15 @@ internal class Ui {
 
     // ---------------------------------------------------------------- 图形 / 控件
 
-    fun hover(b: LayoutBounds) = b.contains(mx, my)
+    /**
+     * 浮在内容上面的东西（底部播放栏）占的地方：画内容时，鼠标在这里不算悬停在下面的内容上。
+     * 画播放栏本身时设回 null
+     */
+    var occluder: LayoutBounds? = null
+    /** 内容区底部被播放栏盖住的高度：能滚动的页面多留这么多，最后一项才能滚到播放栏上面 */
+    var bottomInset = 0f
+
+    fun hover(b: LayoutBounds) = b.contains(mx, my) && occluder?.contains(mx, my) != true
 
     fun card(b: LayoutBounds, color: Color, radius: Float = 10f) =
         ctx.drawShape(b, ShapeStyle(color, radius))

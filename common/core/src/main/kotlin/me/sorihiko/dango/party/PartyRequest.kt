@@ -18,6 +18,8 @@ class PartyRequest(
     val at: Long,
     /** [PLAY]：要放的歌 */
     val track: NeteaseTrack?,
+    /** [PLAY]：成员点歌时所在的列表（含 [track]），房主换成这个列表；旧版本不带，是空的 */
+    val tracks: List<NeteaseTrack> = emptyList(),
 ) {
     companion object {
         const val PLAY = "play"
@@ -26,6 +28,9 @@ class PartyRequest(
         const val PAUSE = "pause"
         const val RESUME = "resume"
         const val SEEK = "seek"
+
+        /** 一次请求最多带多少首歌 */
+        const val MAX_TRACKS = 200
 
         /** 太旧的请求（比如房主刚重连、读到之前留下的）不再执行 */
         const val MAX_AGE_MS = 15_000L
@@ -40,6 +45,10 @@ class PartyRequest(
                 addProperty("op", r.op)
                 addProperty("pos", r.pos)
                 add("at", serverTimestamp)
+                // 列表存成一个字符串（数据库规则只用检查一个字段）
+                if (r.tracks.isNotEmpty()) addProperty("tracks", com.google.gson.JsonArray().apply {
+                    r.tracks.take(MAX_TRACKS).forEach { add(PartyTrackCodec.write(it)) }
+                }.toString())
             }
 
         fun read(o: JsonObject?): PartyRequest? {
@@ -52,10 +61,23 @@ class PartyRequest(
                 PartyRequest(
                     id.take(64), o.get("by")?.asString ?: return null, (o.get("byName")?.asString ?: "?").take(64), op,
                     (o.get("pos")?.asLong ?: 0L).coerceAtLeast(0L), o.get("at")?.asLong ?: 0L, track,
+                    if (op == PLAY) readTracks(o) else emptyList(),
                 )
             } catch (_: Exception) {
                 null
             }
+        }
+
+        /** 请求里带的列表；格式不对就当没带（读不出来的歌跳过） */
+        private fun readTracks(o: JsonObject): List<NeteaseTrack> = try {
+            val raw = o.get("tracks")?.takeIf { it.isJsonPrimitive }?.asString
+            if (raw.isNullOrEmpty()) emptyList() else {
+                val arr = com.google.gson.JsonParser().parse(raw)
+                if (!arr.isJsonArray) emptyList()
+                else arr.asJsonArray.take(MAX_TRACKS).mapNotNull { if (it.isJsonObject) PartyTrackCodec.read(it.asJsonObject) else null }
+            }
+        } catch (_: Exception) {
+            emptyList()
         }
 
         /**

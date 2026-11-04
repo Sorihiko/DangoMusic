@@ -26,6 +26,7 @@ class ShapeShader : GlShader(
             "u_ShadowColor",
             "u_ShadowSize",
             "u_ShadowOffset",
+            "u_ShadowOutside",
             "u_Opacity",
         )
     }
@@ -51,6 +52,7 @@ class ShapeShader : GlShader(
         setUniformColor("u_ShadowColor", style.shadow.color)
         setUniform1f("u_ShadowSize", style.shadow.size)
         setUniform2f("u_ShadowOffset", style.shadow.offset.x, style.shadow.offset.y)
+        setUniform1f("u_ShadowOutside", if (style.shadow.outside) 1f else 0f)
         setUniform1f("u_Opacity", opacity)
     }
 }

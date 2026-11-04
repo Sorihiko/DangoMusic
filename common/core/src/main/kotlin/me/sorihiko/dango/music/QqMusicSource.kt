@@ -16,7 +16,12 @@ object QqMusicSource : MusicSourceApi {
     override fun playlistTracks(id: Long) = if (id == CloudDrives.QQ_ID) {
         val account = NativeAccounts.get(source) ?: throw SourceAccessException("Log in to QQ Music to read your cloud drive.")
         QqCloud().tracks(account)
-    } else catalog.tracks(id)
+    } else QqArtists.albumTracksFor(id) ?: catalog.tracks(id)
+
+    override val hasArtists get() = true
+    override fun artist(id: String) = if (id.matches(Regex("[A-Za-z0-9]{1,64}"))) QqArtists.artist(id) else null
+    override fun artistAlbums(id: String) = if (id.matches(Regex("[A-Za-z0-9]{1,64}"))) QqArtists.artistAlbums(id) else emptyList()
+    override fun findArtist(name: String) = QqArtists.findArtist(name)
 
     internal fun profileId(account: NativeAccount): String {
         try {
@@ -81,7 +86,9 @@ object QqMusicSource : MusicSourceApi {
                 song.number("interval") * 1000,
                 if (album.isEmpty()) "" else "https://y.gtimg.cn/music/photo_new/T002R300x300M000$album.jpg",
                 source, mid, song.text("strMediaMid").ifEmpty { song.text("media_mid").ifEmpty { song.obj("file")?.text("media_mid").orEmpty().ifEmpty { mid } } }, album,
-        )
+        ).apply {
+            artistIds = song.getAsJsonArray("singer")?.map { if (it.isJsonObject) it.asJsonObject.text("mid") else "" } ?: emptyList()
+        }
     }
 
     override fun songUrl(track: NeteaseTrack): NeteaseApi.SongUrl? =

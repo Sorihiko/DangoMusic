@@ -42,7 +42,8 @@ class GlassBackdrop {
     var ready = false
         private set
 
-    fun capture() {
+    /** [fromDrawTarget] = 截正在画的那一层（画到一半时重新截背景用），否则截当前读取的画面 */
+    fun capture(fromDrawTarget: Boolean = false) {
         val window = Minecraft.getInstance().window
         val w = window.width
         val h = window.height
@@ -50,14 +51,14 @@ class GlassBackdrop {
         me.sorihiko.dango.modern.OffscreenHints.glassUsed = true
         me.sorihiko.dango.modern.Imm.flush()
         me.sorihiko.dango.modern.Perf.begin("glass")
-        try { captureNow(w, h) } finally { me.sorihiko.dango.modern.Perf.end("glass") }
+        try { captureNow(w, h, fromDrawTarget) } finally { me.sorihiko.dango.modern.Perf.end("glass") }
     }
 
-    private fun captureNow(w: Int, h: Int) {
+    private fun captureNow(w: Int, h: Int, fromDrawTarget: Boolean) {
 
         // 高版本没有 glPushAttrib：自己记下状态，最后原样恢复（帧缓冲、视口、混合、贴图……）
         val state = GlState()
-        val sourceFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING)
+        val sourceFbo = GL11.glGetInteger(if (fromDrawTarget) GL30.GL_DRAW_FRAMEBUFFER_BINDING else GL30.GL_READ_FRAMEBUFFER_BINDING)
         try {
             if (w != width || h != height || captureTexture == -1) resize(w, h)
 

@@ -14,6 +14,9 @@ description='''
 A NetEase Cloud Music player inside Minecraft: liquid-glass player, 3D lyrics, song card, Dynamic Island and Listen Together.
 '''
 
+[[mixins]]
+config="dangomusic.mixins.json"
+
 [[dependencies.dangomusic]]
 modId="neoforge"
 type="required"

@@ -157,6 +157,7 @@ object Imm {
 
     /** 把攒着的一批画掉（没有就什么都不做） */
     fun flush() {
+        VanillaTextBatch.flush()
         if (batchCount == 0) return
         val n = batchCount
         batchCount = 0
@@ -192,6 +193,7 @@ object Imm {
 
     private fun draw(fixed: Boolean) {
         if (count == 0) return
+        VanillaTextBatch.flush()
         draws++
         glDraws++
         if (vao == 0) {

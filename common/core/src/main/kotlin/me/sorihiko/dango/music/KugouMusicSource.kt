@@ -13,10 +13,15 @@ object KugouMusicSource : MusicSourceApi {
     override fun playlists() = catalog.playlists()
     override fun recommend() = catalog.recommend()
     override fun charts() = catalog.charts()
-    override fun playlistTracks(id: Long) = if (id == CloudDrives.KUGOU_ID) {
+    override fun playlistTracks(id: Long) = KugouArtists.albumTracksFor(id) ?: if (id == CloudDrives.KUGOU_ID) {
         val account = NativeAccounts.get(source) ?: throw SourceAccessException("Log in to Kugou to read your cloud drive.")
         KugouCloud().tracks(account)
     } else catalog.tracks(id)
+
+    override val hasArtists get() = true
+    override fun artist(id: String) = KugouArtists.artist(id)
+    override fun artistAlbums(id: String) = KugouArtists.artistAlbums(id)
+    override fun findArtist(name: String) = KugouArtists.findArtist(name)
 
     override fun search(query: String): List<NeteaseTrack> {
         val root = SourceHttp.json("https://msearchretry.kugou.com/api/v3/search/song?format=json&page=1&pagesize=40&showtype=1&keyword=${SourceHttp.enc(query)}", REFERER)
@@ -39,6 +44,9 @@ object KugouMusicSource : MusicSourceApi {
         if (!hash.matches(Regex("[A-F0-9]{32}"))) return null
         val filename = song.text("filename").ifEmpty { song.text("FileName").ifEmpty { song.text("name") } }
         val title = value("songname", "SongName", "songName", "audio_name").ifEmpty { filename.substringAfter(" - ",filename) }
+        // 歌手 ID 只有部分接口给（排行榜、歌单的 singerinfo / authors），搜索结果里没有：点进歌手页时按名字找
+        val ids = song.array("singerinfo").mapNotNull { if (it.isJsonObject && it.asJsonObject.text("name").isNotBlank()) it.asJsonObject.text("id") else null }
+            .ifEmpty { song.array("authors").mapNotNull { if (it.isJsonObject && it.asJsonObject.text("author_name").isNotBlank()) it.asJsonObject.text("author_id") else null } }
         val names = song.array("singerinfo").mapNotNull { if (it.isJsonObject) it.asJsonObject.text("name").takeIf { s -> s.isNotBlank() } else null }
             .ifEmpty { song.array("authors").mapNotNull { if (it.isJsonObject) it.asJsonObject.text("author_name").takeIf { s -> s.isNotBlank() } else null } }
             .ifEmpty { song.text("singername").ifEmpty { if (" - " in filename) filename.substringBefore(" - ") else "" }.split("、").filter { it.isNotBlank() } }
@@ -48,6 +56,7 @@ object KugouMusicSource : MusicSourceApi {
         return NeteaseTrack(MusicSources.stableId(source,hash),cleanSourceText(title),names.map(::cleanSourceText),ms,
             KugouCatalog.image(cover),source,hash,hash,value("album_id", "albumId", "AlbumID").ifEmpty { album.text("album_id").ifEmpty { album.text("albumId") } }).apply {
             albumAudioId = value("album_audio_id", "albumAudioId").ifEmpty { song.obj("base")?.text("album_audio_id").orEmpty() }
+            if (ids.size == names.size) artistIds = ids.map { id -> id.takeIf { it.matches(Regex("[0-9]{1,20}")) && it != "0" }.orEmpty() }
         }
     }
 

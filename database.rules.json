@@ -52,6 +52,7 @@
           "duration": { ".validate": "newData.isNumber()" },
           "pos": { ".validate": "newData.isNumber()" },
           "at": { ".validate": "newData.isNumber()" },
+          "tracks": { ".validate": "newData.isString() && newData.val().length <= 600000" },
           "$other": { ".validate": false }
         },
         "$other": { ".validate": false }

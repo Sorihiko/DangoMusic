@@ -23,6 +23,15 @@ interface MusicSourceApi {
     fun recommend(): List<NeteasePlaylist> = emptyList()
     fun charts(): List<NeteasePlaylist> = emptyList()
     fun playlistTracks(id: Long): List<NeteaseTrack> = emptyList()
+
+    /** 有没有歌手页 */
+    val hasArtists: Boolean get() = false
+    /** 歌手信息和热门歌曲；[id] 是音源自己的歌手 ID */
+    fun artist(id: String): SourceArtist? = null
+    /** 歌手的专辑，当成歌单列出来（点开走 [playlistTracks]） */
+    fun artistAlbums(id: String): List<NeteasePlaylist> = emptyList()
+    /** 按名字找歌手 ID，找不到返回 "" */
+    fun findArtist(name: String): String = ""
 }
 
 object MusicSources {
@@ -50,8 +59,13 @@ object MusicSources {
             NeteaseApi.DAILY_ID -> NeteaseApi.dailySongs()
             NeteaseApi.FM_ID -> NeteaseApi.personalFm()
             NeteaseApi.CLOUD_ID -> NeteaseApi.cloudTracks()
-            else -> NeteaseApi.playlistTracks(id)
+            // 歌手页里点开的专辑
+            else -> NeteaseApi.albumIdOf(id)?.let { NeteaseApi.albumTracks(it) } ?: NeteaseApi.playlistTracks(id)
         }
+        override val hasArtists get() = true
+        override fun artist(id: String) = id.toLongOrNull()?.let { NeteaseApi.artist(it) }
+        override fun artistAlbums(id: String) = id.toLongOrNull()?.let { NeteaseApi.artistAlbums(it) } ?: emptyList()
+        override fun findArtist(name: String) = NeteaseApi.findArtist(name).takeIf { it > 0 }?.toString().orEmpty()
     }
 
     fun api(source: MusicSource = selected): MusicSourceApi = when (source) {

@@ -149,6 +149,9 @@ internal object McCompat {
     /** 世界画完、开始画我们的东西之前（这些版本当前帧缓冲就是主画面，不用做什么） */
     fun beginWorld() {}
 
+    /** 这些版本直接问 RenderSystem 要投影（在 CPU 上），不用抄 */
+    fun captureWorldProjection(projection: Matrix4fc) {}
+
     /** 绑定帧缓冲（这些版本原版不记帧缓冲，直接绑） */
     fun bindFramebuffer(target: Int, id: Int) {
         Imm.flush()
@@ -188,6 +191,23 @@ internal object McCompat {
             Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
         )
         // 前面可能刚用自己的 VAO 画过：原版的顶点缓冲缓存作废，重新绑定再画字
+        com.mojang.blaze3d.vertex.BufferUploader.invalidate()
+        vanillaDraw { buffers.endBatch() }
+    }
+
+    /** 点阵字可以攒成一批交给原版（[drawTexts]） */
+    val batchesText: Boolean get() = true
+
+    /** 一批点阵字一起交给原版：字都放进同一个缓冲，最后只收尾、换帧缓冲一次 */
+    fun drawTexts(items: List<VanillaText>) {
+        val mc = Minecraft.getInstance()
+        val buffers = mc.renderBuffers().bufferSource()
+        for (t in items) {
+            mc.font.drawInBatch(
+                t.text, t.x, t.y, t.argb, false, t.pose, buffers,
+                Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
+            )
+        }
         com.mojang.blaze3d.vertex.BufferUploader.invalidate()
         vanillaDraw { buffers.endBatch() }
     }

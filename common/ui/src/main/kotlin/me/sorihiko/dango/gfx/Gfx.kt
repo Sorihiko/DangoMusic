@@ -86,6 +86,12 @@ interface GuiCanvas : RenderContext {
     /** 结束一帧：关掉裁剪，恢复渲染状态 */
     fun end()
 
+    /**
+     * 画到一半时把已经画好的东西重新截成液态玻璃的背景：之后画的玻璃会透出（模糊后的）这些内容。
+     * 浮在内容上面的播放栏用；调用前要先把还没画的文字画出来
+     */
+    fun recaptureBackdrop() {}
+
     /** 立刻生效的矩形裁剪，参数和 glScissor 一样（窗口像素，原点在左下角） */
     fun scissor(x: Int, y: Int, width: Int, height: Int)
 

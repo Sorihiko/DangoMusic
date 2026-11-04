@@ -79,7 +79,15 @@ internal class TracksPage(private val screen: MusicScreen) {
     /** 换了页面：列表直接从当前滚动位置开始画，不从别处滑过来 */
     fun onPageChanged() {
         listPos = scroll.toFloat()
+        selSnap = true
     }
+
+    // 正在播放那一行的玻璃高亮：换歌时从原来那行滑到新的一行（单位是"第几行"，滚动时跟着列表走）
+    private val selPos = Spring(320f, 26f)
+    /** 点歌时高亮轻轻缩一下再弹回来 */
+    private val selPress = Spring(420f, 13f)
+    /** 换了页面：高亮直接出现在正确的行，不从上一页的位置滑过来 */
+    private var selSnap = true
 
     fun resetScroll() {
         scroll = 0
@@ -176,6 +184,19 @@ internal class TracksPage(private val screen: MusicScreen) {
 
     // ---------------------------------------------------------------- 绘制
 
+    /** 只画歌曲列表（歌手页的热门歌曲用，标题自己画） */
+    fun drawList(area: LayoutBounds, all: List<NeteaseTrack>) {
+        this.area = area
+        if (embeddedSrc !== all) {
+            embeddedSrc = all
+            embedded = all.mapIndexed { i, t -> i to t }
+        }
+        drawTrackList(area, all, embedded)
+    }
+
+    private var embeddedSrc: List<NeteaseTrack>? = null
+    private var embedded: List<Pair<Int, NeteaseTrack>> = emptyList()
+
     fun draw(page: LayoutBounds) {
         val (title, tracks) = currentTracks()
         val y = page.y
@@ -255,7 +276,7 @@ internal class TracksPage(private val screen: MusicScreen) {
         var headerH = 62f
 
         // 返回
-        if (state.backPage != null) {
+        if (state.backPage != null || state.trail.isNotEmpty()) {
             val bb = LayoutBounds(x, y + 2f, 28f, 28f)
             ctx.drawShape(bb, ShapeStyle(if (ui.hover(bb)) Theme.CARD_HOVER else Theme.CARD, 14f))
             ui.icon("◀", bb.x + 13.5f, bb.y + 14f, 10f, Theme.TEXT_PRIMARY)
@@ -278,7 +299,8 @@ internal class TracksPage(private val screen: MusicScreen) {
             else -> title
         }
         val segW = 132f
-        ui.text(ui.trim(header, page.right - segW - 24f - x, 22f, Theme.FONT_DISPLAY), x, y + 4f, 22f, Theme.TEXT_PRIMARY, Theme.FONT_DISPLAY)
+        // 标题最后再画：要等右边的按钮和筛选框排好，才知道标题最多能有多宽（窗口拉窄时不压到它们）
+        val titleX = x
         val sub = when {
             state.page == Page.SEARCH && Library.searching -> I18n.text("Searching...")
             state.page == Page.SEARCH && tracks.isNullOrEmpty() ->
@@ -350,7 +372,12 @@ internal class TracksPage(private val screen: MusicScreen) {
         }
 
         // 歌单内筛选框（按歌名 / 歌手，输入即筛选）
-        if (tracks != null && state.page != Page.SEARCH) drawFilter(rightX, y) else filterRect = LayoutBounds()
+        if (tracks != null && state.page != Page.SEARCH) {
+            // 窄的时候筛选框跟着变短，给标题至少留 160
+            drawFilter(rightX, y, (rightX - titleX - 160f).coerceIn(110f, 190f))
+            rightX = filterRect.x - 10f
+        } else filterRect = LayoutBounds()
+        ui.text(ui.trim(header, rightX - 14f - titleX, 22f, Theme.FONT_DISPLAY), titleX, y + 4f, 22f, Theme.TEXT_PRIMARY, Theme.FONT_DISPLAY)
         if (state.page == Page.PLAYLIST && p?.id == CloudDrives.id(MusicSources.selected)) {
             val note = CloudDrives.note(MusicSources.selected)
             if (note.isNotEmpty()) {
@@ -361,9 +388,8 @@ internal class TracksPage(private val screen: MusicScreen) {
         return headerH
     }
 
-    private fun drawFilter(rightX: Float, y: Float) {
+    private fun drawFilter(rightX: Float, y: Float, fw: Float) {
         val ctx = ui.ctx
-        val fw = 190f
         filterRect = LayoutBounds(rightX - fw, y + 4f, fw, 26f)
         ui.card(filterRect, if (filterFocused) Theme.CARD_HOVER else Theme.CARD, 13f)
         if (filterFocused) ctx.drawShape(filterRect, ShapeStyle(Color(0f, 0f, 0f, 0f), 13f, 1f, RED))
@@ -460,7 +486,9 @@ internal class TracksPage(private val screen: MusicScreen) {
         val body = LayoutBounds(list.x, list.y + 22f, list.width - sbW, list.height - 22f)
 
         val rowH = 44f
-        val rows = max(1, (body.height / rowH).toInt())
+        // 能完整看到的行只算播放栏上面的部分；播放栏底下也接着画几行，滚动时从它后面经过
+        val rows = max(1, ((body.height - ui.bottomInset) / rowH).toInt())
+        val drawnRows = rows + kotlin.math.ceil(ui.bottomInset / rowH).toInt() + 1
         listRows = rows
         scroll = scroll.coerceIn(0, max(0, tracks.size - rows))
         listPos = if (sbDragging) scroll.toFloat() else ui.easeScroll(listPos, scroll, rows * 3)
@@ -469,9 +497,26 @@ internal class TracksPage(private val screen: MusicScreen) {
         val playing = MusicPlayer.current
         val first = kotlin.math.floor(listPos).toInt()
         val frac = listPos - first
-        val clipArea = LayoutBounds(body.x - 4f, body.y - 2f, body.width + 8f, rows * rowH)
+        val clipArea = LayoutBounds(body.x - 4f, body.y - 2f, body.width + 8f, body.height + 2f)
         ui.beginClip(clipArea)
-        for (r in 0..rows) {
+        val curRow = if (playing == null) -1 else tracks.indexOfFirst { it.second.key == playing.key }
+        if (curRow >= 0) {
+            if (selSnap) { selPos.x = curRow.toFloat(); selPos.v = 0f; selSnap = false }
+            // 跨很多行（比如从第 3 首跳到第 400 首）时不从原位置一路飞过去，那样一闪而过很乱：
+            // 直接放到目标旁边几行，再顺着方向滑进来
+            val gap = curRow - selPos.x
+            if (abs(gap) > SEL_MAX_SLIDE) {
+                selPos.x = curRow - Math.signum(gap) * SEL_ENTRY
+                selPos.v = 0f
+            }
+            val at = selPos.tick(curRow.toFloat())
+            val y = body.y + (at - listPos) * rowH
+            if (y > body.y - rowH && y < body.bottom) {
+                val sel = LayoutBounds(body.x, y, body.width, rowH - 4f).scaled(1f + selPress.tick(0f) * 0.02f)
+                ctx.drawGlass(sel, Theme.GLASS_SELECTION)
+            }
+        }
+        for (r in 0..drawnRows) {
             val vi = first + r
             if (vi < 0) continue
             if (vi >= tracks.size) break
@@ -479,10 +524,7 @@ internal class TracksPage(private val screen: MusicScreen) {
             ui.itemAnim(r) {
                 val row = LayoutBounds(body.x, body.y + (r - frac) * rowH, body.width, rowH - 4f)
                 val isCur = playing != null && playing.key == t.key
-                when {
-                    isCur -> ctx.drawGlass(row, Theme.GLASS_SELECTION)
-                    ui.hover(row) -> ui.card(row, Theme.CARD_HOVER, 10f)
-                }
+                if (!isCur && ui.hover(row)) ui.card(row, Theme.CARD_HOVER, 10f)
                 if (flash > 0f && t.key == flashId) {
                     ctx.drawShape(row, ShapeStyle(Color(0f, 0f, 0f, 0f), 10f, 1.5f, RED.copy(a = flash)))
                 }
@@ -497,10 +539,13 @@ internal class TracksPage(private val screen: MusicScreen) {
                 val durW = 44f
                 val avail = row.right - durW - 12f - tx
                 ui.text(ui.trim(t.name, avail, 13f), tx, row.y + 7f, 13f, if (isCur) RED else Theme.TEXT_PRIMARY)
-                ui.text(ui.trim(t.artists.joinToString(" / "), avail, 11f), tx, row.y + 23f, 11f, Theme.TEXT_SECONDARY)
+                drawArtistLinks(screen, t, tx, row.y + 23f, avail, 11f, Theme.TEXT_SECONDARY, clipArea)
                 val d = fmtTime(t.durationMs)
                 ui.text(d, row.right - 12f - ui.width(d, 11f), row.y + 15f, 11f, Theme.TEXT_TERTIARY)
-                ui.hits += row.intersect(clipArea) to { playFrom(all, i) }
+                ui.hits += row.intersect(clipArea) to {
+                    selPress.v -= 6f
+                    playFrom(all, i)
+                }
             }
         }
         ui.endClip()
@@ -512,7 +557,9 @@ internal class TracksPage(private val screen: MusicScreen) {
      * 中间一张大封面，两边的依次变小、变淡、往后叠。
      * 滚轮 / ←→ / 点两侧切换，点中间那张（或回车）播放。
      */
-    private fun drawCoverflow(area: LayoutBounds, all: List<NeteaseTrack>, shownList: List<Pair<Int, NeteaseTrack>>) {
+    private fun drawCoverflow(full: LayoutBounds, all: List<NeteaseTrack>, shownList: List<Pair<Int, NeteaseTrack>>) {
+        // 封面墙不滚动，整个放在播放栏上面
+        val area = LayoutBounds(full.x, full.y, full.width, full.height - ui.bottomInset)
         val tracks = shownList.map { it.second }
         if (tracks.isEmpty()) return
         cfTarget = cfTarget.coerceIn(0, tracks.size - 1)
@@ -632,3 +679,7 @@ internal class TracksPage(private val screen: MusicScreen) {
         return true
     }
 }
+
+/** 高亮最多滑过几行，再远就从目标旁边 [SEL_ENTRY] 行开始滑 */
+private const val SEL_MAX_SLIDE = 8f
+private const val SEL_ENTRY = 3f

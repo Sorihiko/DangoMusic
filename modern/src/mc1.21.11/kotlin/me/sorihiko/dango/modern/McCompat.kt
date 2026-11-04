@@ -192,6 +192,30 @@ internal object McCompat {
         }
     }
 
+    /** 原版这一帧画世界用的投影（含视角摇晃），上传显卡前由 mixin 抄下来 */
+    private val capturedProjection = Matrix4f()
+    private var projectionCaptured = false
+    private var loggedReadback = false
+
+    fun captureWorldProjection(projection: Matrix4fc) {
+        capturedProjection.set(projection)
+        projectionCaptured = true
+    }
+
+    /** 世界的投影：优先用抄下来的；这一帧没抄到才从显存读（读显存要等显卡，慢） */
+    private fun loadWorldProjection(dest: Matrix4f) {
+        if (projectionCaptured) {
+            dest.set(capturedProjection)
+            projectionCaptured = false
+            return
+        }
+        if (!loggedReadback) {
+            loggedReadback = true
+            DangoLogger.warn("Dango Music: world projection not captured, reading it back from the GPU")
+        }
+        readProjection(dest)
+    }
+
     private val matrixData = BufferUtils.createFloatBuffer(16)
 
     /** 从显存里读出原版当前的投影矩阵；读不到时按视野自己算一个（不含视角摇晃） */
@@ -266,7 +290,7 @@ internal object McCompat {
 
     /** 世界画完、开始画我们的东西之前：记下世界的投影，切到主画面 */
     fun beginWorld() {
-        readProjection(worldProjection)
+        loadWorldProjection(worldProjection)
         bindFramebuffer(GL30.GL_FRAMEBUFFER, mainFramebuffer())
         val target = mc.mainRenderTarget
         Gl.viewport(0, 0, target.width, target.height)
@@ -307,6 +331,22 @@ internal object McCompat {
             text, x, y, argb, false, pose, buffers,
             Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
         )
+        vanillaDraw { buffers.endBatch() }
+    }
+
+    /** 点阵字可以攒成一批交给原版（[drawTexts]） */
+    val batchesText: Boolean get() = true
+
+    /** 一批点阵字一起交给原版：字都放进同一个缓冲，最后只收尾、换帧缓冲一次 */
+    fun drawTexts(items: List<VanillaText>) {
+        val mc = Minecraft.getInstance()
+        val buffers = mc.renderBuffers().bufferSource()
+        for (t in items) {
+            mc.font.drawInBatch(
+                t.text, t.x, t.y, t.argb, false, t.pose, buffers,
+                Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
+            )
+        }
         vanillaDraw { buffers.endBatch() }
     }
 

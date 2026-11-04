@@ -66,8 +66,33 @@ object ListenParty {
     @Volatile var busy = false
         private set
 
-    /** 同步层，换中转 / 别的服务时只换这里 */
+    /** 同步层：开房 / 加入时选好（当前服务器能用就用服务器，否则 Firebase），在房间里不再换 */
     @Volatile var transport: PartyTransport = Firebase
+
+    private val probing = AtomicBoolean(false)
+
+    /** 界面：后台看看当前服务器能不能直接一起听（结果在 [ServerTransport.connected]） */
+    fun probeServer() {
+        if (role != Role.NONE || !probing.compareAndSet(false, true)) return
+        worker.execute {
+            try { ServerTransport.ready() } finally { probing.set(false) }
+        }
+    }
+
+    /** 开房用哪个：当前服务器（房主的游戏）装了这个 mod 就用它，不用 Firebase */
+    private fun pickForCreate(): PartyTransport = if (ServerTransport.ready()) ServerTransport else Firebase
+
+    /** 离开了服务器：经这个服务器开的房间已经没了，本地退出 */
+    fun serverLinkLost() {
+        worker.execute {
+            if (transport !== ServerTransport) return@execute
+            if (role != Role.NONE) {
+                abandonLocally()
+                status = "You left the server, so the Listen Together room has closed."
+            }
+            transport = Firebase
+        }
+    }
 
     @Volatile private var remote: RemoteState? = null
     private var stopListen: (() -> Unit)? = null
@@ -146,7 +171,8 @@ object ListenParty {
         status = "正在创建房间…"
         worker.execute {
             try {
-                val net = transport
+                val net = pickForCreate()
+                transport = net
                 if (!net.configured) return@execute fail("还没配置 Firebase（firebase.properties）")
                 if (!net.ensureAuth()) return@execute fail(connectError(net, "连不上 Firebase（" + net.lastStatus + "）"))
                 net.syncClock()
@@ -205,14 +231,32 @@ object ListenParty {
         status = "正在加入 $c …"
         worker.execute {
             try {
-                val net = transport
-                if (!net.configured) return@execute fail("还没配置 Firebase（firebase.properties）")
-                if (!net.ensureAuth()) return@execute fail(connectError(net, "连不上 Firebase（" + net.lastStatus + "）"))
-                net.syncClock()
-                val room = net.get("rooms/$c")
-                    // 读失败（null）和房间不存在（读到空值）分开说
-                    ?: return@execute fail(connectError(net, "加入失败（" + net.lastStatus + "）"))
-                if (!room.isJsonObject) return@execute fail("房间 $c 不存在")
+                // 先在当前服务器上找（局域网联机时房间多半开在这里），没有再找 Firebase
+                val tries = listOfNotNull(ServerTransport.takeIf { it.ready() }, Firebase.takeIf { it.configured })
+                if (tries.isEmpty()) return@execute fail("还没配置 Firebase（firebase.properties）")
+                var found: Pair<PartyTransport, JsonElement>? = null
+                var error = ""
+                for (candidate in tries) {
+                    if (!candidate.ensureAuth()) {
+                        error = connectError(candidate, "连不上 Firebase（" + candidate.lastStatus + "）")
+                        continue
+                    }
+                    candidate.syncClock()
+                    val got = candidate.get("rooms/$c")
+                    if (got == null) {
+                        // 读失败（null）和房间不存在（读到空值）分开说
+                        error = connectError(candidate, "加入失败（" + candidate.lastStatus + "）")
+                        continue
+                    }
+                    if (!got.isJsonObject) {
+                        if (error.isEmpty()) error = "房间 $c 不存在"
+                        continue
+                    }
+                    found = candidate to got
+                    break
+                }
+                val (net, room) = found ?: return@execute fail(error.ifEmpty { "房间 $c 不存在" })
+                transport = net
                 if (isAbandoned(room.asJsonObject)) return@execute fail("房间 $c 已经没人了")
                 val protocol = room.asJsonObject.get("protocol")?.asInt ?: 1
                 if (protocol !in 1..3) return@execute fail("This room requires a newer DangoMusic version.")
@@ -294,7 +338,14 @@ object ListenParty {
     // ---------------------------------------------------------------- 成员：把操作交给房主
 
     /** 成员点了一首歌：本地先开始加载（快一点），同时请房主切过去 */
-    fun requestPlay(track: NeteaseTrack) {
+    fun requestPlay(track: NeteaseTrack) = requestPlayList(listOf(track), 0)
+
+    /**
+     * 成员在列表里点了一首（或者"播放全部"）：本地先开始加载这首，同时把列表交给房主，房主换成这个列表从这首开始放。
+     * 列表太长时只带这首前后的一段（最多 [PartyRequest.MAX_TRACKS] 首）
+     */
+    fun requestPlayList(tracks: List<NeteaseTrack>, start: Int) {
+        val track = tracks.getOrNull(start) ?: return
         if (!canControl || !supportsSource(track.source)) return
         if (me.sorihiko.dango.music.CloudDrives.privateTrack(track)) {
             status = "Private Kugou cloud tracks cannot be shared in Listen Together. Leave the room to play them."
@@ -303,7 +354,10 @@ object ListenParty {
         requestedKey = track.key
         MusicPlayer.playTrackAt(track, { 0L }, false)
         lastCorrection = System.currentTimeMillis() + 4000
-        sendRequest(PartyRequest.PLAY, 0L, track)
+        val from = (start - PartyRequest.MAX_TRACKS / 4).coerceIn(0, maxOf(0, tracks.size - PartyRequest.MAX_TRACKS))
+        val list = tracks.subList(from, minOf(tracks.size, from + PartyRequest.MAX_TRACKS))
+            .filter { supportsSource(it.source) && !me.sorihiko.dango.music.CloudDrives.privateTrack(it) }
+        sendRequest(PartyRequest.PLAY, 0L, track, if (list.size > 1) list else emptyList())
     }
 
     fun requestNext() = sendRequest(PartyRequest.NEXT, 0L, null)
@@ -316,13 +370,19 @@ object ListenParty {
         sendRequest(op, pos, null)
     }
 
-    private fun sendRequest(op: String, pos: Long, track: NeteaseTrack?) {
+    private fun sendRequest(op: String, pos: Long, track: NeteaseTrack?, tracks: List<NeteaseTrack> = emptyList()) {
         if (!canControl) return
         val c = code
         worker.execute {
             val net = transport
-            val r = PartyRequest(newCode(), net.uid, myName(), op, pos, 0L, track)
-            if (net.put("rooms/$c/req", PartyRequest.write(r, sv())) == null && code == c) {
+            val r = PartyRequest(newCode(), net.uid, myName(), op, pos, 0L, track, tracks)
+            var ok = net.put("rooms/$c/req", PartyRequest.write(r, sv())) != null
+            if (!ok && tracks.isNotEmpty() && (net.lastStatus == 401 || net.lastStatus == 403) && code == c) {
+                // 房间所在的 Firebase 还是旧的数据库规则（不认识整个列表）：退回只发这一首
+                val single = PartyRequest(newCode(), net.uid, myName(), op, pos, 0L, track)
+                ok = net.put("rooms/$c/req", PartyRequest.write(single, sv())) != null
+            }
+            if (!ok && code == c) {
                 // 401 / 403：数据库规则里还没有 req 这一条
                 status = if (net.lastStatus == 401 || net.lastStatus == 403) "成员控制被数据库拒绝了，请房间所在的 Firebase 更新数据库规则"
                     else connectError(net, "操作没发出去（" + net.lastStatus + "）")
@@ -332,7 +392,9 @@ object ListenParty {
     }
 
     /** 连不上时告诉玩家卡在哪：登录服务、数据库还是代理；服务器拒绝等其他情况用 [fallback] */
-    private fun connectError(net: PartyTransport, fallback: String): String = when (net.lastFailure) {
+    private fun connectError(net: PartyTransport, fallback: String): String = if (net === ServerTransport) {
+        if (net.lastFailure == PartyTransport.Failure.REJECTED) "The server rejected this Listen Together action." else "Cannot reach Listen Together on this server. Please retry."
+    } else when (net.lastFailure) {
         PartyTransport.Failure.AUTH_UNREACHABLE -> "连不上 Google 登录服务。国内网络通常需要开代理，可在“连接方式”里设置"
         PartyTransport.Failure.SERVER_UNREACHABLE -> "连不上 Firebase 数据库。国内网络通常需要开代理，可在“连接方式”里设置"
         PartyTransport.Failure.PROXY_UNREACHABLE -> "代理连不上。请确认代理软件已打开、端口正确，或在“连接方式”里换一种"
@@ -481,7 +543,13 @@ object ListenParty {
     private fun runRequest(r: PartyRequest) {
         DangoLogger.info("Listen Together: member request {}", r.op)
         when (r.op) {
-            PartyRequest.PLAY -> r.track?.let { if (supportsSource(it.source)) MusicPlayer.playNext(it) }
+            PartyRequest.PLAY -> r.track?.let { track ->
+                if (!supportsSource(track.source)) return@let
+                // 成员带了整个列表：换成这个列表，从成员点的那首开始；没带（旧版本）就插在当前这首后面
+                val list = r.tracks.filter { supportsSource(it.source) }
+                val at = list.indexOfFirst { it.key == track.key }
+                if (list.size > 1 && at >= 0) MusicPlayer.playQueue(list, at) else MusicPlayer.playNext(track)
+            }
             PartyRequest.NEXT -> MusicPlayer.next()
             PartyRequest.PREV -> MusicPlayer.prev()
             PartyRequest.SEEK, PartyRequest.PAUSE, PartyRequest.RESUME -> {

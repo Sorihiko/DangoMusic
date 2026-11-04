@@ -4,6 +4,8 @@ import me.sorihiko.dango.i18n.I18n
 
 import me.sorihiko.dango.DangoClient
 import me.sorihiko.dango.music.MusicScreen
+import me.sorihiko.dango.party.Firebase
+import me.sorihiko.dango.party.ServerTransport
 import me.sorihiko.dango.party.ListenParty
 import me.sorihiko.dango.party.PartyProxy
 import me.sorihiko.dango.party.PartyTransport
@@ -47,9 +49,17 @@ internal class PartyPage(private val screen: MusicScreen) {
         ui.text(sub, x, y + 30f, 11f, Theme.TEXT_SECONDARY, Theme.FONT_SEMIBOLD)
         y += 66f
 
-        if (!ListenParty.transport.configured) {
+        // 不在房间里：看看当前服务器（局域网 / 内网穿透联机时是房主的游戏）能不能直接一起听
+        if (role == ListenParty.Role.NONE) ListenParty.probeServer()
+        val viaServer = if (role == ListenParty.Role.NONE) ServerTransport.connected else ListenParty.transport === ServerTransport
+        if (viaServer) {
+            ui.text(if (role == ListenParty.Role.NONE) I18n.text("This server supports Listen Together directly. No Firebase or proxy needed.")
+                else I18n.text("Syncing through the current server"), x, y, 12f, Theme.TEXT_SECONDARY, Theme.FONT_MEDIUM)
+            y += 28f
+        } else if (!Firebase.configured) {
+            // 没配置好也照常显示下面的按钮和连接方式（点了会在下面提示原因），只在这里先说一声
             ui.text(I18n.text("Listen Together is not set up (missing firebase.properties)"), x, y, 12f, RED, Theme.FONT_MEDIUM)
-            return
+            y += 28f
         }
 
         if (role == ListenParty.Role.NONE) {

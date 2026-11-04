@@ -55,6 +55,10 @@ class GlassRenderContext : GuiCanvas {
         _mouseY = mouseY
     }
 
+    override fun recaptureBackdrop() {
+        backdrop?.capture()
+    }
+
     override fun end() {
         GL11.glDisable(GL11.GL_SCISSOR_TEST)
         snapshot?.restore()

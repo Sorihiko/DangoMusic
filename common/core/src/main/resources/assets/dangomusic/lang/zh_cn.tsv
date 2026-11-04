@@ -387,8 +387,6 @@ The NetEase cloud drive repeated a page. Please retry.	网易云云盘返回了�
 The NetEase cloud drive returned too many pages.	网易云云盘返回的分页过多。
 NetEase returned an audio format that this player does not support yet.	网易云返回了播放器尚不支持的音频格式。
 
-Android detected. If music playback causes FPS drops, try appending -Ddangomusic.openal=true to your launcher's JVM arguments (separated from other arguments by a space), then restart the game.	检测到你是安卓玩家。如果播放音乐时掉帧，可点击复制 -Ddangomusic.openal=true，并追加到启动器的 JVM 参数末尾（与其他参数用空格隔开），保存后重启游戏。
-Click to copy JVM argument	点击复制 JVM 参数
 
 Only uploads matched to QQ Music's catalog are shown. Original unmatched files are not supported.	仅显示已匹配 QQ 音乐曲库的云盘歌曲，暂不支持未匹配的原始文件。
 Cloud uploads support MP3, Ogg Vorbis and FLAC. Private cloud tracks cannot be shared in Listen Together.	云盘支持 MP3、Ogg Vorbis、FLAC；私人云盘歌曲暂不支持一起听。
@@ -407,3 +405,25 @@ No playable cloud audio was returned. Check this upload in the official Kugou cl
 Private Kugou cloud tracks cannot be shared in Listen Together. Leave the room to play them.	酷狗私人云盘歌曲暂不支持一起听，请退出房间后播放。
 Switch away from the private Kugou cloud track before creating a room.	请先切换到非酷狗私人云盘歌曲，再创建房间。
 No cloud songs to display	没有可显示的云盘歌曲
+Audio output	音频输出
+Where the music plays through	音乐从哪里放出来
+Auto	自动
+Java Sound	Java Sound
+Game audio (OpenAL)	游戏声音（OpenAL）
+Popular songs	热门歌曲
+Albums	专辑
+About	简介
+Play	播放
+%d songs · %d albums	%d 首歌 · %d 张专辑
+No albums	没有专辑
+No introduction	暂无简介
+Finding artist...	正在查找歌手…
+Could not load this artist. Please retry.	歌手信息加载失败，请重试
+Artist	歌手
+Songs	歌曲
+The host has turned off member control. You can only follow the host's music.	房主关闭了成员控制，只能跟着房主听
+You left the server, so the Listen Together room has closed.	离开了服务器，一起听的房间已关闭
+The server rejected this Listen Together action.	服务器拒绝了这次一起听操作
+Cannot reach Listen Together on this server. Please retry.	连不上当前服务器的一起听，请重试
+This server supports Listen Together directly. No Firebase or proxy needed.	当前服务器可以直接一起听，不用 Firebase，也不用代理
+Syncing through the current server	经当前服务器同步

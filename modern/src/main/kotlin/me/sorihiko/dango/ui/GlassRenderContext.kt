@@ -53,6 +53,11 @@ class GlassRenderContext : GuiCanvas {
         _mouseY = mouseY
     }
 
+    override fun recaptureBackdrop() {
+        // 截正在画的这一层（26.x 和 Vulkan 时播放器画在自己的图层上，不一定是当前读取的画面）
+        backdrop?.capture(fromDrawTarget = true)
+    }
+
     override fun end() {
         Gl.scissor(false)
         snapshot?.restore()
