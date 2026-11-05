@@ -89,8 +89,19 @@ internal class KugouCatalog(
             addProperty("area_code",1); addProperty("show_relate_goods",0); addProperty("allplatform",1); addProperty("show_cover",1)
             addProperty("type",0); addProperty("page",number); addProperty("pagesize",50)
         },account)
+        // 个人歌单每首歌带一个 sort：酷狗 App 里的顺序（用户拖动排过的也是它），从小到大就是 App 里从上到下
+        val sortOf = HashMap<String, Long>()
         fun parse(data: JsonObject): List<NeteaseTrack> =
-            data.array("info").mapNotNull { if (it.isJsonObject) KugouMusicSource.parseTrack(it.asJsonObject) else null }
+            data.array("info").mapNotNull { e ->
+                if (!e.isJsonObject) return@mapNotNull null
+                val o = e.asJsonObject
+                KugouMusicSource.parseTrack(o)?.also { t ->
+                    if (ref.kind == "personal" && o.has("sort")) o.text("sort").toLongOrNull()?.let { sortOf.putIfAbsent(t.key, it) }
+                }
+            }
+        /** 每首都有 sort 时按它排（和 App 一样）；有缺的就保持接口给的顺序 */
+        fun appOrder(list: List<NeteaseTrack>): List<NeteaseTrack> =
+            if (list.isNotEmpty() && list.all { sortOf.containsKey(it.key) }) list.sortedBy { sortOf.getValue(it.key) } else list
 
         val tracks = LinkedHashMap<String,NeteaseTrack>()
         val first = page(1)
@@ -114,7 +125,7 @@ internal class KugouCatalog(
             for (t in firstPage.asReversed()) tracks.putIfAbsent(t.key, t)
             if (total <= 0 || received >= total) {
                 TrackLoadProgress.report(tracks.size, total.toInt())
-                return tracks.values.toList()
+                return appOrder(tracks.values.toList())
             }
             // 每页条数不一样、倒着取漏了：退回从前往后一页页翻，直到收齐
             val forward = LinkedHashMap<String,NeteaseTrack>()
@@ -131,7 +142,7 @@ internal class KugouCatalog(
                 if (consumed >= total) break
                 if (added == 0) throw SourceAccessException("Kugou repeated a library page. Please retry.")
             }
-            return forward.values.toList().asReversed().toList()
+            return appOrder(forward.values.toList().asReversed().toList())
         }
         // 排行榜：从前往后翻页
         var list = firstPage
