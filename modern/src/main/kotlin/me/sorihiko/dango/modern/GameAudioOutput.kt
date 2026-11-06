@@ -55,7 +55,7 @@ class GameAudioOutput private constructor(
 
     override val lost: Boolean get() = !closed && !alive()
 
-    private fun alive() = ALC10.alcGetCurrentContext() == context
+    private fun alive() = AlContext.matches(context)
 
     override val isRunning: Boolean get() = running
 
@@ -128,7 +128,7 @@ class GameAudioOutput private constructor(
 
     /** 游戏重启了声音系统（F3+T、换了输出设备）：原来的音源已经没了，抛出去让播放器换一个新的输出接着放 */
     private fun checkContext() {
-        check(ALC10.alcGetCurrentContext() == context) { "Game audio was restarted" }
+        check(AlContext.matches(context)) { "Game audio was restarted" }
     }
 
     override fun drain() {
@@ -163,7 +163,7 @@ class GameAudioOutput private constructor(
         closed = true
         running = false
         try {
-            if (ALC10.alcGetCurrentContext() == context) {
+            if (AlContext.matches(context)) {
                 // 停下以后排着的缓冲都算放完了：全部取回来，和音源一起删掉
                 AL10.alSourceStop(source)
                 reclaim()
@@ -187,7 +187,7 @@ class GameAudioOutput private constructor(
 
         /** 游戏的声音系统开着就能用；没开（声音设备打不开等）返回 null */
         fun open(sampleRate: Int, channels: Int): GameAudioOutput? {
-            val context = ALC10.alcGetCurrentContext()
+            val context = AlContext.current()
             if (context == 0L || sampleRate <= 0 || channels <= 0) return null
             AL10.alGetError()
             return GameAudioOutput(context, sampleRate, channels).apply {
@@ -196,5 +196,50 @@ class GameAudioOutput private constructor(
                 AL10.alSourcef(source, AL10.AL_ROLLOFF_FACTOR, 0f)
             }
         }
+    }
+}
+
+/**
+ * 读游戏当前的 OpenAL 环境。
+ * 有的安卓启动器（紫水晶）自带的 LWJGL 里没有 `ALC10.alcGetCurrentContext`（#47）：
+ * 先直接按名字找这个函数调用；还找不到就当"不知道"，照样放歌，只是认不出声音系统重启。
+ */
+private object AlContext {
+    /** 读不到当前环境时用的占位值 */
+    private const val UNKNOWN = -1L
+
+    @Volatile private var missing = false
+    private val address: Long by lazy {
+        try {
+            org.lwjgl.openal.ALC.getFunctionProvider()?.getFunctionAddress("alcGetCurrentContext") ?: 0L
+        } catch (e: LinkageError) {
+            0L
+        }
+    }
+
+    fun current(): Long {
+        if (!missing) {
+            try {
+                return ALC10.alcGetCurrentContext()
+            } catch (e: LinkageError) {
+                missing = true
+                me.sorihiko.dango.DangoLogger.warn("Dango Music: alcGetCurrentContext missing, looking it up directly")
+            }
+        }
+        val fn = address
+        if (fn != 0L) {
+            try {
+                return org.lwjgl.system.JNI.invokeP(fn)
+            } catch (e: LinkageError) {
+            }
+        }
+        return UNKNOWN
+    }
+
+    /** 还是 [context] 这个环境（读不到时一律当作还在） */
+    fun matches(context: Long): Boolean {
+        if (context == UNKNOWN) return true
+        val now = current()
+        return now == UNKNOWN || now == context
     }
 }
