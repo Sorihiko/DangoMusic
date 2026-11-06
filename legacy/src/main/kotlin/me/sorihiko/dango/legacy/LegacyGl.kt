@@ -6,9 +6,6 @@ import me.sorihiko.dango.font.FontManager
 import me.sorihiko.dango.font.UiFont
 import me.sorihiko.dango.shader.ShaderManager
 import me.sorihiko.dango.shader.impls.QuadShader
-import me.sorihiko.dango.shader.impls.glow.GlowCompositeShader
-import me.sorihiko.dango.shader.impls.glow.GlowDownsampleShader
-import me.sorihiko.dango.shader.impls.glow.GlowUpsampleShader
 import me.sorihiko.dango.shader.impls.ui.FontShader
 import me.sorihiko.dango.shader.impls.ui.GlassBlurShader
 import me.sorihiko.dango.shader.impls.ui.GlassShader
@@ -36,9 +33,6 @@ object LegacyGl {
         glReady = true
 
         shaderManager.register(QuadShader())
-        shaderManager.register(GlowDownsampleShader())
-        shaderManager.register(GlowUpsampleShader())
-        shaderManager.register(GlowCompositeShader())
         shaderManager.register(ShapeShader())
         shaderManager.register(FontShader())
         shaderManager.register(ImageShader())

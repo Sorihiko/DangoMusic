@@ -58,7 +58,11 @@ class GlassBackdrop {
 
         // 高版本没有 glPushAttrib：自己记下状态，最后原样恢复（帧缓冲、视口、混合、贴图……）
         val state = GlState()
-        val sourceFbo = GL11.glGetInteger(if (fromDrawTarget) GL30.GL_DRAW_FRAMEBUFFER_BINDING else GL30.GL_READ_FRAMEBUFFER_BINDING)
+        val sourceFbo = when {
+            fromDrawTarget -> GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
+            mainSource > 0 -> mainSource
+            else -> GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING)
+        }
         try {
             if (w != width || h != height || captureTexture == -1) resize(w, h)
 
@@ -143,6 +147,15 @@ class GlassBackdrop {
         width = 0
         height = 0
         ready = false
+    }
+
+    companion object {
+        /**
+         * 画在图层上时，背景该从哪张画面截（1.21.11：主画面）。
+         * 不能靠"当前读取的画面"：画歌词时原版可能把它换掉，截到的就成了刚画好的歌词，灵动岛会闪一下（#44）。
+         * 0 = 没指定，照旧截当前读取的画面。
+         */
+        @JvmField var mainSource = 0
     }
 }
 

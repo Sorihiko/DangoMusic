@@ -409,12 +409,50 @@ internal object McCompat {
  * 原版按顺序画，它就在 HUD 上面了。
  */
 private object ScreenLayer {
-    private val id = Identifier.fromNamespaceAndPath("dangomusic", "screen_layer")
-    private var texture: LayerTexture? = null
-    private var framebuffer = 0
-    private var width = 0
-    private var height = 0
     private val transparent = floatArrayOf(0f, 0f, 0f, 0f)
+
+    /**
+     * 同一帧里可能画好几次（HUD 一次、我们的界面一次……），原版要到最后才真正贴上去：
+     * 共用一张贴图的话，后画的会把先画的盖掉，HUD 那块就显示成别的内容（#44）。所以每次用各自的贴图。
+     */
+    private val slots = ArrayList<Slot>()
+    private var frame: GuiGraphics? = null
+    private var used = 0
+
+    private class Slot(index: Int) {
+        val id: Identifier = Identifier.fromNamespaceAndPath("dangomusic", if (index == 0) "screen_layer" else "screen_layer_$index")
+        var texture: LayerTexture? = null
+        var framebuffer = 0
+        var width = 0
+        var height = 0
+
+        fun ensure(w: Int, h: Int) {
+            if (w == width && h == height && texture != null) return
+            val manager = Minecraft.getInstance().textureManager
+            if (texture != null) manager.release(id)
+            val t = LayerTexture(w, h)
+            manager.register(id, t)
+            texture = t
+
+            if (framebuffer == 0) framebuffer = GL30.glGenFramebuffers()
+            val previous = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, framebuffer)
+            GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, t.glId, 0)
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previous)
+            width = w
+            height = h
+        }
+    }
+
+    /** 这一帧的下一张贴图（原版每帧新建一个 GuiGraphics，换了就是新的一帧） */
+    private fun nextSlot(graphics: GuiGraphics): Slot {
+        if (graphics !== frame) {
+            frame = graphics
+            used = 0
+        }
+        if (used == slots.size) slots += Slot(used)
+        return slots[used++]
+    }
 
     private class LayerTexture(w: Int, h: Int) : AbstractTexture() {
         init {
@@ -432,35 +470,21 @@ private object ScreenLayer {
         val glId: Int get() = (texture as GlTexture).glId()
     }
 
-    private fun ensure(w: Int, h: Int) {
-        if (w == width && h == height && texture != null) return
-        val manager = Minecraft.getInstance().textureManager
-        if (texture != null) manager.release(id)
-        val t = LayerTexture(w, h)
-        manager.register(id, t)
-        texture = t
-
-        if (framebuffer == 0) framebuffer = GL30.glGenFramebuffers()
-        val previous = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
-        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, framebuffer)
-        GL30.glFramebufferTexture2D(GL30.GL_DRAW_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, t.glId, 0)
-        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, previous)
-        width = w
-        height = h
-    }
-
     fun draw(graphics: GuiGraphics, block: () -> Unit) {
         val window = Minecraft.getInstance().window
         val w = window.width
         val h = window.height
         if (w <= 0 || h <= 0) return
-        ensure(w, h)
+        val slot = nextSlot(graphics)
+        slot.ensure(w, h)
 
         val state = GlState()
         try {
             // 读：主画面（玻璃要模糊的背景从这里抓）；写：我们的透明贴图
-            McCompat.bindFramebuffer(GL30.GL_READ_FRAMEBUFFER, McCompat.mainFramebuffer())
-            McCompat.bindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, framebuffer)
+            val main = McCompat.mainFramebuffer()
+            McCompat.bindFramebuffer(GL30.GL_READ_FRAMEBUFFER, main)
+            McCompat.bindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, slot.framebuffer)
+            me.sorihiko.dango.ui.glass.GlassBackdrop.mainSource = main
             Gl.viewport(0, 0, w, h)
             Gl.scissor(false)
             Gl.colorMask(true, true, true, true)
@@ -469,8 +493,10 @@ private object ScreenLayer {
             block()
         } finally {
             Gl.premultipliedTarget = false
+            me.sorihiko.dango.ui.glass.GlassBackdrop.mainSource = 0
             state.restore()
         }
+        val id = slot.id
 
         // 整张贴到界面上：一个像素对一个像素（先把界面缩放抵消掉）；OpenGL 贴图是从下往上存的，v 反过来取
         val pose = graphics.pose()
