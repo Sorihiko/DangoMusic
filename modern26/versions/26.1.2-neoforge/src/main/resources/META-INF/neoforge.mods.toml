@@ -20,7 +20,7 @@ config="dangomusic.mixins.json"
 [[dependencies.dangomusic]]
 modId="neoforge"
 type="required"
-versionRange="[26.1.2,)"
+versionRange="[26.1,)"
 ordering="NONE"
 side="CLIENT"
 
