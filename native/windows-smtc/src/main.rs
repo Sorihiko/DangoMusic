@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+use base64::Engine;
 use serde::Deserialize;
 use std::io::{self, BufRead, Write};
 use windows::core::{w, Result, HSTRING};
@@ -11,12 +12,19 @@ use windows::Media::{
     SystemMediaTransportControlsButtonPressedEventArgs,
     SystemMediaTransportControlsTimelineProperties,
 };
+use windows::Storage::Streams::{
+    DataWriter, InMemoryRandomAccessStream, RandomAccessStreamReference,
+};
 use windows::Win32::System::WinRT::{RoInitialize, RoUninitialize, RO_INIT_MULTITHREADED};
 use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
+    #[serde(default)]
+    cover_key: String,
+    #[serde(default)]
+    cover_data: String,
     title: String,
     artist: String,
     state: String,
@@ -102,9 +110,22 @@ fn read_snapshots(
             continue;
         };
         let last = previous.as_ref();
-        if last.is_none_or(|p| p.title != snapshot.title || p.artist != snapshot.artist) {
+        if last.is_none_or(|p| {
+            p.title != snapshot.title
+                || p.artist != snapshot.artist
+                || p.cover_key != snapshot.cover_key
+                || p.cover_data != snapshot.cover_data
+        }) {
+            updater.ClearAll()?;
+            updater.SetType(MediaPlaybackType::Music)?;
+            updater.SetAppMediaId(&HSTRING::from("DangoMusic"))?;
             music.SetTitle(&HSTRING::from(&snapshot.title))?;
             music.SetArtist(&HSTRING::from(&snapshot.artist))?;
+            if !snapshot.cover_data.is_empty() {
+                if let Err(error) = set_thumbnail(updater, &snapshot.cover_data) {
+                    emit(&format!("error\tCover unavailable: {error}"));
+                }
+            }
             updater.Update()?;
         }
         if last.is_none_or(|p| {
@@ -139,6 +160,23 @@ fn read_snapshots(
         controls.UpdateTimelineProperties(timeline)?;
         previous = Some(snapshot);
     }
+    Ok(())
+}
+
+fn set_thumbnail(
+    updater: &windows::Media::SystemMediaTransportControlsDisplayUpdater,
+    encoded: &str,
+) -> Result<()> {
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded) else {
+        return Ok(());
+    };
+    let stream = InMemoryRandomAccessStream::new()?;
+    let writer = DataWriter::CreateDataWriter(&stream)?;
+    writer.WriteBytes(&bytes)?;
+    writer.StoreAsync()?.join()?;
+    writer.DetachStream()?;
+    stream.Seek(0)?;
+    updater.SetThumbnail(&RandomAccessStreamReference::CreateFromStream(&stream)?)?;
     Ok(())
 }
 

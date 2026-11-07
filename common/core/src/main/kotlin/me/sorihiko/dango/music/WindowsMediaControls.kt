@@ -5,6 +5,11 @@ import me.sorihiko.dango.DangoLogger
 import me.sorihiko.dango.DangoMusic
 import me.sorihiko.dango.party.ListenParty
 import java.io.BufferedWriter
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.awt.image.BufferedImage
+import java.util.Base64
+import javax.imageio.ImageIO
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -27,6 +32,7 @@ object WindowsMediaControls {
     private data class Snapshot(
         val title: String, val artist: String, val state: String, val positionMs: Long, val durationMs: Long,
         val canControl: Boolean, val canSkip: Boolean, val canSeek: Boolean, val canStop: Boolean,
+        val coverKey: String, val coverData: String,
     )
     private class Session(val process: Process, val input: BufferedWriter) {
         var lastSnapshot: Snapshot? = null
@@ -36,6 +42,13 @@ object WindowsMediaControls {
     private val gson = Gson()
     private val latest = AtomicReference<Snapshot?>()
     private val commands = ArrayBlockingQueue<Command>(32)
+    private val coverWorker = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "Dango-SMTC-Cover").apply { isDaemon = true }
+    }
+    private data class Cover(val key: String, val data: String)
+    @Volatile private var cover = Cover("", "")
+    @Volatile private var coverKey = ""
+    private var coverRetryAt = 0L
     @Volatile private var session: Session? = null
     private var workerStarted = false
     private var retryAt = 0L
@@ -69,10 +82,13 @@ object WindowsMediaControls {
         val duration = track.durationMs.coerceAtLeast(0L)
         val position = MusicPlayer.positionMs.coerceIn(0L, duration)
         if (MusicPlayer.current !== track || MusicPlayer.state != playbackState) return
+        val imageKey = track.key + "|" + track.coverUrl
+        requestCover(imageKey, track.coverUrl)
+        val image = cover.takeIf { it.key == imageKey }?.data.orEmpty()
         latest.set(Snapshot(track.name, track.artists.joinToString(" / "), state,
             position, duration, allowed && state != "loading",
             allowed && (MusicPlayer.queue.size > 1 || MusicPlayer.radio != null),
-            allowed && duration > 0 && state != "loading", ListenParty.role == ListenParty.Role.NONE))
+            allowed && duration > 0 && state != "loading", ListenParty.role == ListenParty.Role.NONE, imageKey, image))
         if (!workerStarted) {
             workerStarted = true
             Executors.newSingleThreadScheduledExecutor { task ->
@@ -84,6 +100,40 @@ object WindowsMediaControls {
     private fun clear() {
         latest.set(null)
         commands.clear()
+        coverKey = ""
+        cover = Cover("", "")
+        coverRetryAt = 0L
+    }
+
+    private fun requestCover(key: String, url: String) {
+        if (url.isBlank()) return
+        if (coverKey == key && (cover.key == key || System.nanoTime() < coverRetryAt)) return
+        coverKey = key
+        coverRetryAt = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+        coverWorker.execute {
+            try {
+                if (coverKey != key) return@execute
+                val host = java.net.URI(url).host.orEmpty()
+                val full = if ("?" !in url && (host.endsWith(".126.net") || host.endsWith(".163.com"))) "$url?param=512y512" else url
+                val bytes = NeteaseApi.request(full, "image/jpeg,image/png,image/*;q=0.8", 8 * 1024 * 1024)
+                    ?: return@execute
+                val image = ImageIO.read(ByteArrayInputStream(bytes)) ?: return@execute
+                val size = minOf(512, image.width, image.height)
+                val square = BufferedImage(size, size, BufferedImage.TYPE_INT_RGB)
+                val graphics = square.createGraphics()
+                try {
+                    val side = minOf(image.width, image.height)
+                    val x = (image.width - side) / 2
+                    val y = (image.height - side) / 2
+                    graphics.drawImage(image, 0, 0, size, size, x, y, x + side, y + side, null)
+                } finally { graphics.dispose() }
+                val output = ByteArrayOutputStream()
+                if (!ImageIO.write(square, "png", output)) return@execute
+                if (coverKey == key) cover = Cover(key, Base64.getEncoder().encodeToString(output.toByteArray()))
+            } catch (e: Exception) {
+                DangoLogger.warn("Windows media cover unavailable: {}", e.javaClass.simpleName)
+            }
+        }
     }
 
     private fun handle(command: String) {
