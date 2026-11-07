@@ -334,6 +334,8 @@ Preview only: membership is needed for the full song	仅试听片段：需要会
 The original was unavailable, playing another version	原版放不了，已换成其他版本
 Volume normalization	音量均衡
 Keep songs at a similar loudness	让不同的歌听起来差不多响
+Windows media controls	Windows 系统媒体控制
+Allow media keys and Windows lyrics apps to follow playback	允许键盘媒体键控制播放，并向 Windows 桌面歌词应用同步歌曲和进度
 Could not add to Liked songs. Please retry.	没能加入"我喜欢"，请重试。
 Could not remove from Liked songs. Please retry.	没能取消红心，请重试。
 Show sound rays	显示声音射线

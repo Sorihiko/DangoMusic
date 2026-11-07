@@ -1,6 +1,7 @@
 .gradle/
 .kotlin/
 build/
+/native/windows-smtc/target/
 dist/
 build.log
 logs/

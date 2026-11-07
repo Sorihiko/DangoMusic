@@ -24,6 +24,7 @@
 - **三个音源**：网易云 / QQ 音乐 / 酷狗，都在游戏内扫码登录（会员歌曲需要对应平台的会员）
 - **歌词**：逐字歌词，3D 歌词漂浮在世界里，带发光、抖动、文闪等效果
 - **Song card / 灵动岛**：屏幕上显示正在播放
+- **Windows 系统媒体控制**：Windows x64 可用键盘媒体键控制播放。Lyricify Fusion 等应用可以读取曲名、歌手和进度来匹配并显示歌词。开关在「设置 → 播放」。
 - **歌手页**：点歌手名看热门歌曲、专辑和简介
 - **一起听歌**：分享房间码，所有人同步到同一首歌、同一秒；局域网 / 内网穿透联机时直接经房主的游戏同步，不用 Firebase、不用代理；不在同一个服务器、不是同一个 MC 版本也能经 Firebase 一起听
 - 设置都在播放器侧栏的 ⚙ 里，可以绑定快捷键
@@ -49,6 +50,8 @@
 ## 构建
 
 需要 JDK 8、21、25，运行 `build-all.bat`，jar 收集到 `dist/`（JDK 不在默认位置时设置 `DANGO_JDK21` / `DANGO_JDK25`）。
+
+Windows x64 上，Gradle 在 PATH 中找到 Cargo 时会编译并打包 SMTC 小程序，需 Rust 的 `x86_64-pc-windows-msvc` 工具链和 MSVC 链接器。可用 `-PdangoWindowsSmtc=false` 跳过此步骤。
 
 <details>
 <summary>启用一起听歌（Firebase）</summary>

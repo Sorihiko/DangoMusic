@@ -344,7 +344,8 @@ object MusicPlayer {
                     else if (NeteaseApi.loggedIn) "这首歌没有播放权限" else "需要登录才能播放（VIP 歌曲）")
             }
             // Cloud list duration units are not reliable. Use compressed audio timing before enabling seeking.
-            val measuredDuration = if (track.cloud) AudioAnalysis.duration(bytes) { gen == generation } else 0L
+            val measureDuration = track.cloud || track.durationMs <= 0L || WindowsMediaControls.enabledForPlayback
+            val measuredDuration = if (measureDuration) AudioAnalysis.duration(bytes) { gen == generation } else 0L
             val measuredGain = if (normalize) AudioAnalysis.gain(bytes) { gen == generation } else null
             if (gen != generation) return
             if (measuredDuration > 0) track.durationMs = measuredDuration

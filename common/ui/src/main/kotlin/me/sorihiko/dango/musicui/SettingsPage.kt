@@ -265,13 +265,14 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
         player.left.remove("musicSource") // 音源通过侧栏切换。
         for (k in listOf("windowX", "windowY", "windowW", "windowH")) player.left.remove(k) // 拖窗口边缘改，不在设置里显示
         if (!DangoMusic.instance.platform.hasGameAudio) player.left.remove("audioOutput") // 1.8.9 只有 Java Sound
+        if (!me.sorihiko.dango.music.WindowsMediaControls.supported) player.left.remove("windowsMediaControls")
         val card = Src(mm.get(SongCardModule::class.java), fmts = mapOf("posX" to ::percent, "posY" to ::percent))
         val island = Src(mm.get(DynamicIslandModule::class.java), fmts = mapOf("notifyTime" to { v: Any -> "%.1f s".format((v as FloatValue).value) }))
         // 先取走，免得落进下面的 Hotkeys 组
         val updates = player.take(listOf("checkUpdates"))
         val environment = player.take(listOf("envAudio", "envRain", "envStrength", "envRays"))
         val music = listOf(
-            Group("Player", "Playback", player.m, false, player.take(listOf("volume", "normalize", "audioOutput", "language"))),
+            Group("Player", "Playback", player.m, false, player.take(listOf("volume", "normalize", "audioOutput", "windowsMediaControls", "language"))),
             Group("Environment audio", "Sound around you", player.m, false, environment),
             Group("Hotkeys", "Click, then press a key · Backspace clears", player.m, false, player.take()),
             Group("Song card", "Overlay", card.m, true, card.take()),

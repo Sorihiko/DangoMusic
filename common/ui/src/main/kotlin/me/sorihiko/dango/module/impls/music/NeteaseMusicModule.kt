@@ -21,6 +21,7 @@ import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.NeteaseApi
 import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.MusicSource
+import me.sorihiko.dango.music.WindowsMediaControls
 import me.sorihiko.dango.platform.Keys
 import me.sorihiko.dango.platform.allowedPlayerKey
 import me.sorihiko.dango.platform.PlayerAction
@@ -122,6 +123,9 @@ class NeteaseMusicModule : Module() {
     @ModuleValue("Environment audio", "Echo follows the room you are in (size and materials), muffled underwater")
     private val envAudio = BooleanValue(true)
 
+    @ModuleValue("Windows media controls", "Allow media keys and Windows lyrics apps to follow playback")
+    private val windowsMediaControls = BooleanValue(true)
+
     @ModuleValue("Rain", "A little quieter in rain and thunder")
     private val envRain = BooleanValue(true)
 
@@ -171,6 +175,7 @@ class NeteaseMusicModule : Module() {
     }
 
     override fun onDisable() {
+        WindowsMediaControls.tick(false)
         MusicPlayer.stop()
     }
 
@@ -312,6 +317,7 @@ class NeteaseMusicModule : Module() {
         MusicPlayer.repeatOne = repeatOne.get()
 
         MusicPlayer.normalize = normalize.get()
+        WindowsMediaControls.tick(windowsMediaControls.get())
 
         // 环境音效：设置和玩家周围的环境交给解码线程
         EnvironmentAudio.enabled = envAudio.get()
