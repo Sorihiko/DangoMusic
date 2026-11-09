@@ -10,8 +10,10 @@ object CloudDrives {
         MusicSource.NETEASE -> NeteaseApi.CLOUD_ID
         MusicSource.QQ -> QQ_ID
         MusicSource.KUGOU -> KUGOU_ID
+        MusicSource.SODA -> -1L
     }
     fun entry(source: MusicSource): NeteasePlaylist? {
+        if (source == MusicSource.SODA) return null
         val loggedIn = if (source == MusicSource.NETEASE) NeteaseApi.loggedIn else NativeAccounts.get(source) != null
         return if (loggedIn) NeteasePlaylist(id(source), I18n.text("Cloud drive"), 0, "", false) else null
     }

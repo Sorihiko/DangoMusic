@@ -7,6 +7,7 @@ import me.sorihiko.dango.gfx.Texture
 import me.sorihiko.dango.music.MusicScreen
 import me.sorihiko.dango.music.NeteaseLogin
 import me.sorihiko.dango.music.NativeLogin
+import me.sorihiko.dango.music.SodaLogin
 import me.sorihiko.dango.music.MusicSource
 import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.platform.Keys
@@ -30,6 +31,9 @@ internal class LoginDialog(private val screen: MusicScreen) {
         // 酷狗概念版的二维码（和普通版并排）
         private var liteLoc: Texture? = null
         private var liteUploaded = -1
+        // 汽水音乐：游戏内自己画的登录二维码
+        private var sodaLoc: Texture? = null
+        private var sodaUploaded = -1
     }
 
     val visible: Boolean get() = showing
@@ -42,16 +46,22 @@ internal class LoginDialog(private val screen: MusicScreen) {
     fun open() {
         showing = true
         provider = MusicSources.selected
+        if (provider == MusicSource.SODA) {
+            SodaLogin.start()
+            return
+        }
         if (native) NativeLogin.start(provider) else NeteaseLogin.start()
     }
 
     fun close() {
         showing = false
+        if (provider == MusicSource.SODA) return
         if (native) NativeLogin.cancel() else NeteaseLogin.cancel()
     }
 
     /** 新二维码生成后传成贴图（每帧调用，没变化就什么都不做） */
     fun uploadQr() {
+        if (provider == MusicSource.SODA) return
         val img = image ?: return
         val version = if (native) NativeLogin.qrVersion else NeteaseLogin.qrVersion
         if (version == qrUploaded && uploadedProvider == provider) return
@@ -74,6 +84,10 @@ internal class LoginDialog(private val screen: MusicScreen) {
     fun draw() {
         val ctx = ui.ctx
         hits.clear()
+        if (provider == MusicSource.SODA) {
+            drawSoda()
+            return
+        }
         val state = this.state
         if (state == NeteaseLogin.State.SUCCESS) {
             showing = false
@@ -147,6 +161,71 @@ internal class LoginDialog(private val screen: MusicScreen) {
             ui.text(label, b.x + 14f, b.y + 9f, 12f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
             hits += b to { if (native) NativeLogin.start(provider) else NeteaseLogin.start() }
         }
+    }
+
+    /** 汽水音乐：游戏内二维码，用汽水音乐 App 扫 */
+    private fun drawSoda() {
+        val ctx = ui.ctx
+        ctx.drawShape(LayoutBounds(0f, 0f, ui.lw, ui.lh), ShapeStyle(Color(0f, 0f, 0f, 0.45f)))
+        val w = 380f
+        val h = 476f
+        val box = LayoutBounds((ui.lw - w) / 2f, (ui.lh - h) / 2f, w, h)
+        ctx.drawGlass(box, Theme.GLASS_WINDOW)
+        ui.text(I18n.text("Log in") + " · " + I18n.text(MusicSource.SODA.label), box.x + 20f, box.y + 18f, 18f, Theme.TEXT_PRIMARY, Theme.FONT_SEMIBOLD)
+        val closeB = LayoutBounds(box.right - 38f, box.y + 14f, 24f, 24f)
+        ctx.drawShape(closeB, ShapeStyle(if (ui.hover(closeB)) Theme.CARD_HOVER else Theme.CARD, 12f))
+        ui.text("x", closeB.x + 8.5f, closeB.y + 7f, 12f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
+        hits += closeB to { close() }
+
+        val qs = 200f
+        val qrBox = LayoutBounds(box.x + (w - qs) / 2f, box.y + 58f, qs, qs)
+        ctx.drawShape(qrBox.expand(10f, 10f), ShapeStyle(Color.WHITE, 14f))
+        val loc = uploadSoda()
+        if (loc != null) {
+            ctx.pushOpacity(if (SodaLogin.state == SodaLogin.State.SCANNED) 0.35f else 1f)
+            ctx.drawImage(qrBox, loc)
+            ctx.popOpacity()
+        } else {
+            val waiting = I18n.text("Generating login QR...")
+            ui.text(waiting, qrBox.x + (qs - ui.width(waiting, 12f)) / 2f, qrBox.y + qs / 2f - 6f, 12f, Color(0.33f, 0.33f, 0.33f, 1f))
+        }
+
+        val statusText = when (SodaLogin.state) {
+            SodaLogin.State.SCANNED -> I18n.text("Scanned. Confirm the login in the Soda Music app.")
+            SodaLogin.State.ERROR -> I18n.message(SodaLogin.message)
+            SodaLogin.State.LOADING -> I18n.text("Generating login QR...")
+            else -> I18n.text("Scan with the Soda Music app")
+        }
+        val lines = ui.wrap2(statusText, w - 40f, 12f)
+        lines.take(3).forEachIndexed { index, shown ->
+            ui.text(shown, box.x + (w - ui.width(shown, 12f)) / 2f, qrBox.bottom + 26f + index * 16f, 12f,
+                if (SodaLogin.state == SodaLogin.State.ERROR) RED else if (SodaLogin.state == SodaLogin.State.SCANNED) Theme.GREEN else Theme.TEXT_SECONDARY)
+        }
+
+        if (SodaLogin.state == SodaLogin.State.ERROR) {
+            val label = I18n.text("Refresh QR")
+            val bw = ui.width(label, 12f, Theme.FONT_MEDIUM) + 34f
+            val b = LayoutBounds(box.x + (w - bw) / 2f, box.bottom - 48f, bw, 30f)
+            ctx.drawShape(b, ShapeStyle(RED, 15f))
+            ui.text(label, b.x + 17f, b.y + 9f, 12f, Theme.TEXT_PRIMARY, Theme.FONT_MEDIUM)
+            hits += b to { SodaLogin.start() }
+        }
+
+        if (SodaLogin.state == SodaLogin.State.SUCCESS) {
+            showing = false
+            SodaLogin.cancel()
+            Library.refreshAll()
+        }
+    }
+
+    private fun uploadSoda(): Texture? {
+        val image = SodaLogin.qrImage ?: return null
+        if (SodaLogin.qrVersion == sodaUploaded) return sodaLoc
+        val textures = DangoClient.gfx.textures
+        sodaLoc?.let { textures.delete(it) }
+        sodaLoc = textures.upload("dango_soda_qr", image)
+        sodaUploaded = SodaLogin.qrVersion
+        return sodaLoc
     }
 
     /** 酷狗：左边普通版、右边概念版，扫哪个就按哪个版本登录 */

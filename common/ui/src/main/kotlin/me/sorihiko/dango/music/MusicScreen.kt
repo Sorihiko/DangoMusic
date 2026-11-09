@@ -78,6 +78,7 @@ class MusicScreen(
         openedAt = System.currentTimeMillis()
         Library.ensureSource()
         NativeAccounts.refreshProfile(MusicSources.selected)
+        if (MusicSources.selected == MusicSource.SODA && NativeAccounts.get(MusicSource.SODA) == null) SodaLogin.connectQuietly()
         if (Library.playlists.isEmpty()) Library.reloadPlaylists()
         else if (Library.stale) Library.softRefresh()
         Library.loadRecommend()
@@ -105,6 +106,7 @@ class MusicScreen(
         if (source == MusicSources.selected) return
         module.selectSource(source)
         NativeAccounts.refreshProfile(source)
+        if (source == MusicSource.SODA && NativeAccounts.get(MusicSource.SODA) == null) SodaLogin.connectQuietly()
         sidebar.searchText = ""
         sidebar.searchFocused = false
         ScreenState.lastQuery = ""

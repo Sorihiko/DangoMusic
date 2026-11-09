@@ -330,13 +330,15 @@ object MusicPlayer {
 
     private fun load(gen: Int, track: NeteaseTrack, startAt: (() -> Long)? = null, paused: Boolean = false) {
         try {
-            val kugou = if (track.source == MusicSource.KUGOU) KugouMusicSource.loadAudio(track) { gen == generation } else null
-            val url = if (track.source == MusicSource.KUGOU) kugou?.info else MusicSources.api(track.source).songUrl(track)
+            val api = MusicSources.api(track.source)
+            val custom = api.prepareAudio(track) { gen == generation }
+            val kugou = if (custom == null && track.source == MusicSource.KUGOU) KugouMusicSource.loadAudio(track) { gen == generation } else null
+            val url = custom?.info ?: if (track.source == MusicSource.KUGOU) kugou?.info else api.songUrl(track)
             if (gen != generation) return
             if (url == null) return fail(gen, if (track.source == MusicSource.NETEASE) "拿不到播放地址"
                 else if (NativeAccounts.get(track.source) != null) "No playable MP3. Your login may have expired, or this song is restricted by membership or region."
                 else "No guest MP3 available. Login, payment or regional restrictions may apply.")
-            val bytes = kugou?.bytes ?: if (track.source == MusicSource.NETEASE) NeteaseApi.request(url.url)
+            val bytes = custom?.bytes ?: kugou?.bytes ?: if (track.source == MusicSource.NETEASE) NeteaseApi.request(url.url)
                 else SourceHttp.bytes(url.url, if (track.source == MusicSource.QQ) "https://y.qq.com/" else "https://m.kugou.com/")
             if (gen != generation) return
             if (bytes == null || bytes.isEmpty() || (!track.cloud && bytes.size < 10_000)) {

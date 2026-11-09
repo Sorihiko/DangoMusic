@@ -7,17 +7,22 @@ import java.security.MessageDigest
 
 /** Persistent provider names; never use a process-local counter as a song identifier. */
 enum class MusicSource(val key: String, val label: String) {
-    NETEASE("netease", "NetEase"), QQ("qq", "QQ Music"), KUGOU("kugou", "Kugou");
+    NETEASE("netease", "NetEase"), QQ("qq", "QQ Music"), KUGOU("kugou", "Kugou"), SODA("soda", "Soda Music");
 }
 
 /** Only locally-authored public messages belong here; never include a token or request URL. */
 class SourceAccessException(message: String) : IllegalStateException(message)
 
 interface MusicSourceApi {
+    /** 音源自己下载/解密好的音频；返回非 null 时播放器不再走 [songUrl] 的普通 HTTP 下载。 */
+    class LoadedAudio(val bytes: ByteArray, val info: NeteaseApi.SongUrl? = null)
+
     val source: MusicSource
     val libraryWarning: String get() = ""
     fun search(query: String): List<NeteaseTrack>
     fun songUrl(track: NeteaseTrack): NeteaseApi.SongUrl?
+    /** 需要特殊容器/解密的音源（汽水）走这里；默认 null。 */
+    fun prepareAudio(track: NeteaseTrack, active: () -> Boolean): LoadedAudio? = null
     fun lyrics(track: NeteaseTrack): Lyrics?
     fun playlists(): List<NeteasePlaylist> = emptyList()
     fun recommend(): List<NeteasePlaylist> = emptyList()
@@ -72,6 +77,7 @@ object MusicSources {
         MusicSource.NETEASE -> netease
         MusicSource.QQ -> QqMusicSource
         MusicSource.KUGOU -> KugouMusicSource
+        MusicSource.SODA -> SodaMusicSource
     }
 
     /** Compatibility ID for existing numeric UI fields. Identity is always [NeteaseTrack.key]. */

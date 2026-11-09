@@ -427,3 +427,28 @@ The server rejected this Listen Together action.	服务器拒绝了这次一起�
 Cannot reach Listen Together on this server. Please retry.	连不上当前服务器的一起听，请重试
 This server supports Listen Together directly. No Firebase or proxy needed.	当前服务器可以直接一起听，不用 Firebase，也不用代理
 Syncing through the current server	经当前服务器同步
+Soda Music	汽水音乐
+Connect	连接
+Connecting...	连接中…
+Connecting to the Soda Music client...	正在连接汽水音乐客户端…
+Open the Soda Music desktop client and log in there, then press Connect.	请打开汽水音乐电脑版并登录，然后点“连接”。
+Soda Music needs Node.js 22 or newer. Install Node.js and restart the game.	汽水音乐需要 Node.js 22 或更新版本，请安装后重启游戏。
+Log in to the Soda Music desktop client first.	请先在汽水音乐电脑版登录。
+Soda Music desktop client was not found.	未检测到汽水音乐电脑版。
+Soda Music device identity (DeviceV1) is missing.	汽水音乐设备信息缺失，请重新登录电脑版。
+Soda Music account information is unavailable. Update the desktop client and retry.	暂时读不到汽水音乐账号信息，请更新电脑版后重试。
+Soda Music returned no playback information.	汽水音乐没有返回播放信息。
+Soda Music only returned a preview. Check your membership in the desktop client.	汽水音乐只返回了试听片段，请检查电脑版会员状态。
+This song has no FLAC stream. The built-in player cannot decode Soda Music AAC yet.	这首歌没有 FLAC 音质，内置播放器暂时还不能解码汽水的 AAC。
+Unable to download this song from Soda Music.	下载汽水音乐音频失败。
+Unable to decrypt this Soda Music stream.	解密汽水音乐音频失败。
+Soda Music returned an empty response. The client signature was rejected; update the client and retry.	汽水音乐返回空响应，客户端签名被拒绝，请更新电脑版后重试。
+Node.js 22.5 or newer is required (node:sqlite).	需要 Node.js 22.5 或更新版本。
+Scan with the Soda Music app	使用汽水音乐 App 扫码
+Scanned. Confirm the login in the Soda Music app.	已扫码，请在汽水音乐 App 里确认登录
+Generating login QR...	正在生成登录二维码…
+The login QR code expired. Try again.	登录二维码已过期，请重试
+Soda Music login did not complete.	汽水音乐登录没有完成
+Soda Music did not return a login QR code.	汽水音乐没有返回登录二维码
+Too many login requests. Wait a minute and try again.	登录请求太频繁，请等一分钟再试
+Close the Soda Music client, then press Connect again.	请先退出汽水音乐客户端，再点连接

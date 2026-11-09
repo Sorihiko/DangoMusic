@@ -36,7 +36,7 @@ import me.sorihiko.dango.update.UpdateChecker
 class NeteaseMusicModule : Module() {
 
     @ModuleValue("Music source", "Select a music provider")
-    private val musicSource = IntValue(0, 2, 0)
+    private val musicSource = IntValue(0, MusicSource.values().size - 1, 0)
 
     fun selectSource(source: MusicSource) {
         musicSource.setValue(source.ordinal)

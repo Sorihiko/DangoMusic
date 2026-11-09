@@ -54,7 +54,11 @@ object NativeAccounts {
                         val item = entry.asJsonObject
                         val origin = URI(item.text("origin"))
                         val domain = item.text("domain")
-                        val providerDomain = if (source == MusicSource.QQ) "qq.com" else "kugou.com"
+                        val providerDomain = when (source) {
+                            MusicSource.QQ -> "qq.com"
+                            MusicSource.SODA -> "qishui.com"
+                            else -> "kugou.com"
+                        }
                         if (origin.scheme == "https" && AuthHttp.allowed(source, origin.host) &&
                             (domain.trimStart('.') == providerDomain || domain.endsWith(".$providerDomain"))) {
                             val expires = item.number("expires")
@@ -135,7 +139,7 @@ object NativeAccounts {
 
     /** Also fills profiles saved by earlier beta versions, without another QR login. */
     fun refreshProfile(source: MusicSource) {
-        if (source == MusicSource.NETEASE) return
+        if (source == MusicSource.NETEASE || source == MusicSource.SODA) return
         val account = get(source) ?: return
         if (account.nickname.isNotEmpty() && account.avatarUrl.isNotEmpty()) return
         synchronized(lock) {
