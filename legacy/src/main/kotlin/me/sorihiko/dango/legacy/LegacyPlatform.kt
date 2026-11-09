@@ -141,4 +141,14 @@ object LegacyPlatform : Platform {
     override fun openMusicScreen() {
         mc.displayGuiScreen(LegacyMusicScreen(mc.currentScreen))
     }
+
+    private var holdingMusic = false
+
+    /** 刚开始让路时停掉正在放的原版音乐；之后由 ForgeBridge.onPlaySound 拦住新的 */
+    override fun holdVanillaMusic(hold: Boolean) {
+        me.sorihiko.dango.platform.VanillaMusicHold.active = hold
+        // func_181557_a：MusicTicker 停掉当前这首（这个 MCP 版本里没起名字）
+        if (hold && !holdingMusic) mc.musicTicker.func_181557_a()
+        holdingMusic = hold
+    }
 }

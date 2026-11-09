@@ -95,6 +95,20 @@ interface Platform {
 
     /** [openAudioOutput] 能不能用（设置里要不要显示"音频输出"） */
     val hasGameAudio: Boolean get() = false
+
+    /**
+     * 原版背景音乐让路：[hold] 为 true 时停掉正在放的原版音乐，并且不让它开始新的一首；
+     * 变回 false 后原版照常接着放。每个游戏 tick 调用一次，在游戏线程上
+     */
+    fun holdVanillaMusic(hold: Boolean) {}
+}
+
+/**
+ * [Platform.holdVanillaMusic] 的状态，给各版本的 mixin / 事件读（它们在 Java 里，直接读这个字段）
+ */
+object VanillaMusicHold {
+    /** 现在要不要拦住原版背景音乐 */
+    @JvmField @Volatile var active = false
 }
 
 /**

@@ -24,7 +24,14 @@ public class DangoMusicNeoForge {
         // 这个版本的 NeoForge 加载 mod 时游戏本体（Minecraft）还没创建，
         // 读配置文件夹等都要用到它，所以等第一个游戏 tick 再启动
         NeoForge.EVENT_BUS.addListener(DangoMusicNeoForge::onClientTick);
+        NeoForge.EVENT_BUS.addListener(DangoMusicNeoForge::onPlaySound);
         NeoForge.EVENT_BUS.addListener(DangoMusicNeoForge::onRenderLevel);
+    }
+
+    /** 原版音乐让路：放歌时拦掉原版要开始放的背景音乐（音乐盒是 RECORDS，不受影响） */
+    private static void onPlaySound(net.neoforged.neoforge.client.event.sound.PlaySoundEvent event) {
+        if (me.sorihiko.dango.platform.VanillaMusicHold.active && event.getSound() != null
+                && event.getSound().getSource() == net.minecraft.sounds.SoundSource.MUSIC) event.setSound(null);
     }
 
     /** 每个游戏 tick 开头 */

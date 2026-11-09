@@ -28,7 +28,7 @@
 - **一起听歌**：分享房间码，所有人同步到同一首歌、同一秒；局域网 / 内网穿透联机时直接经房主的游戏同步，不用 Firebase、不用代理；不在同一个服务器、不是同一个 MC 版本也能经 Firebase 一起听
 - 设置都在播放器侧栏的 ⚙ 里，可以绑定快捷键
 
-更新内容见 [1.7.3 更新日志](docs/CHANGELOG-1.7.3.md)。
+更新内容见 [1.7.4 更新日志](docs/CHANGELOG-1.7.4.md)。
 
 ## 安装
 
@@ -39,8 +39,9 @@
 | 1.8.9 | — | `+1.8.9.jar`（Forge 11.15.1.2318，或 Lunar 等客户端） |
 | 1.20.1 | `+1.20.1-fabric.jar` | `+1.20.1-forge.jar`（Forge 47.x） |
 | 1.21.1 | `+1.21.1-fabric.jar` | `+1.21.1-neoforge.jar` |
+| 1.21.10 | `+1.21.10-fabric.jar` | `+1.21.10-neoforge.jar` |
 | 1.21.11 | `+1.21.11-fabric.jar` | `+1.21.11-neoforge.jar` |
-| 26.1.2 | `+26.1.2-fabric.jar` | `+26.1.2-neoforge.jar` |
+| 26.1 / 26.1.1 / 26.1.2 | `+26.1.2-fabric.jar` | `+26.1.2-neoforge.jar` |
 | 26.2 | `+26.2-fabric.jar` | `+26.2-neoforge.jar` |
 | 26.3 | `+26.3-fabric.jar` | `+26.3-neoforge.jar` |
 

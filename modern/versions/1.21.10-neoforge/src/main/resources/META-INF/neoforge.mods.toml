@@ -1,0 +1,32 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="GPL-3.0"
+issueTrackerURL="https://github.com/Sorihiko/DangoMusic/issues"
+
+[[mods]]
+modId="dangomusic"
+version="${version}"
+displayName="Dango Music"
+authors="Sorihiko"
+displayURL="https://github.com/Sorihiko/DangoMusic"
+logoFile="assets/dangomusic/icon.png"
+description='''
+A NetEase Cloud Music player inside Minecraft: liquid-glass player, 3D lyrics, song card, Dynamic Island and Listen Together.
+'''
+
+[[mixins]]
+config="dangomusic.mixins.json"
+
+[[dependencies.dangomusic]]
+modId="neoforge"
+type="required"
+versionRange="[21.10,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.dangomusic]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_range}"
+ordering="NONE"
+side="CLIENT"

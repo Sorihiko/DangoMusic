@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "dangomusic",
+  "version": "${version}",
+  "name": "Dango Music",
+  "description": "A NetEase Cloud Music player inside Minecraft: liquid-glass player, 3D lyrics, song card, Dynamic Island and Listen Together.",
+  "authors": ["Sorihiko"],
+  "contact": {
+    "homepage": "https://github.com/Sorihiko/DangoMusic",
+    "sources": "https://github.com/Sorihiko/DangoMusic",
+    "issues": "https://github.com/Sorihiko/DangoMusic/issues"
+  },
+  "license": "GPL-3.0",
+  "icon": "assets/dangomusic/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["me.sorihiko.dango.fabric.DangoMusicFabric"]
+  },
+  "mixins": ["dangomusic.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.17.0",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_range}",
+    "java": ">=${java_version}"
+  }
+}

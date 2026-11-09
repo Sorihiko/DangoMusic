@@ -4,6 +4,7 @@
   "package": "me.sorihiko.dango.fabric.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "MusicManagerMixin",
     "GameRendererMixin",
     "LivingEntityRendererMixin",
     "HudMixin",

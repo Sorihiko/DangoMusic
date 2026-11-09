@@ -129,6 +129,18 @@ object ModernPlatform : Platform {
 
     override val hasGameAudio: Boolean get() = true
 
+    private var holdingMusic = false
+
+    /**
+     * 刚开始让路时停掉正在放的原版音乐（只停一次：原版每停一次都会把下一首往后推 5 秒）。
+     * 让路期间不让它放新的：Fabric 由 MusicManagerMixin 暂停原版音乐的计时，Forge / NeoForge 由播放声音事件拦掉
+     */
+    override fun holdVanillaMusic(hold: Boolean) {
+        me.sorihiko.dango.platform.VanillaMusicHold.active = hold
+        if (hold && !holdingMusic) mc.musicManager.stopPlaying()
+        holdingMusic = hold
+    }
+
     override val player: PlayerPose?
         get() {
             val p = mc.player ?: return null

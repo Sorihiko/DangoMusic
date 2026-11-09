@@ -53,6 +53,12 @@ class ForgeBridge {
         DangoMusic.callEvent(TickEvent)
     }
 
+    /** 原版音乐让路：放歌时拦掉原版要开始放的背景音乐（音乐盒是 RECORDS，不受影响） */
+    @SubscribeEvent
+    fun onPlaySound(e: net.minecraftforge.client.event.sound.PlaySoundEvent) {
+        if (me.sorihiko.dango.platform.VanillaMusicHold.active && e.category == net.minecraft.client.audio.SoundCategory.MUSIC) e.result = null
+    }
+
     @SubscribeEvent
     fun onRenderWorldLast(e: RenderWorldLastEvent) {
         DangoMusic.callEvent(WorldRenderEndEvent(e.partialTicks))

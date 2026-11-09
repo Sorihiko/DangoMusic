@@ -40,6 +40,7 @@ public class DangoMusicForge {
             ModernDango.start();
             PartyNetwork.register();
             MinecraftForge.EVENT_BUS.addListener(Client::onClientTick);
+            MinecraftForge.EVENT_BUS.addListener(Client::onPlaySound);
             MinecraftForge.EVENT_BUS.addListener(Client::onRenderLevel);
             MinecraftForge.EVENT_BUS.addListener(Client::onMenuDraw);
             MinecraftForge.EVENT_BUS.addListener(Client::onOverlayDrawn);
@@ -52,6 +53,12 @@ public class DangoMusicForge {
         }
         static void onRegisterKeys(RegisterKeyMappingsEvent event) {
             ModernKeyBindings.register(event::register);
+        }
+
+        /** 原版音乐让路：放歌时拦掉原版要开始放的背景音乐（音乐盒是 RECORDS，不受影响） */
+        static void onPlaySound(net.minecraftforge.client.event.sound.PlaySoundEvent event) {
+            if (me.sorihiko.dango.platform.VanillaMusicHold.active && event.getSound() != null
+                    && event.getSound().getSource() == net.minecraft.sounds.SoundSource.MUSIC) event.setSound(null);
         }
 
         /** 每个游戏 tick 开头 */

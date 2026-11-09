@@ -157,6 +157,7 @@ object EnvironmentAudio {
         }
         val lateDelay = (baseDelay * 1.5f).toInt()
         val out = FloatArray(2)
+        val dry = FloatArray(2)
         var i = 0
         while (i + ch - 1 < length) {
             var mono = 0f
@@ -168,22 +169,35 @@ object EnvironmentAudio {
                     y2[c] = y1[c]; y1[c] = y
                     v = y
                 }
-                pcm[i + c] = v.toInt().coerceIn(-32768, 32767).toShort()
+                dry[c] = v
                 mono += v
             }
             if (reverb) {
                 reverbSample(mono / ch, baseDelay, tapLeft, tapRight, lateDelay, out)
                 if (ch == 2) {
-                    pcm[i] = ((pcm[i] + out[0] * wet) * gain).toInt().coerceIn(-32768, 32767).toShort()
-                    pcm[i + 1] = ((pcm[i + 1] + out[1] * wet) * gain).toInt().coerceIn(-32768, 32767).toShort()
+                    pcm[i] = limit((dry[0] + out[0] * wet) * gain)
+                    pcm[i + 1] = limit((dry[1] + out[1] * wet) * gain)
                 } else {
-                    pcm[i] = ((pcm[i] + (out[0] + out[1]) * 0.5f * wet) * gain).toInt().coerceIn(-32768, 32767).toShort()
+                    pcm[i] = limit((dry[0] + (out[0] + out[1]) * 0.5f * wet) * gain)
                 }
-            } else if (gain < 0.999f) {
-                for (c in 0 until ch) pcm[i + c] = (pcm[i + c] * gain).toInt().coerceIn(-32768, 32767).toShort()
+            } else {
+                for (c in 0 until ch) pcm[i + c] = limit(dry[c] * gain)
             }
             i += ch
         }
+    }
+
+    /**
+     * 写回 16 位前的软限幅（#58）：回声叠在原声上、低通滤波的过冲都可能超出满幅，
+     * 低音重的歌原声本来就接近满幅，直接截断会大片削波、听起来"炸"。
+     * 低于 [LIMIT_KNEE] 原样不动，超出的部分平滑压进剩下的余量里，永远到不了满幅。
+     */
+    private fun limit(x: Float): Short {
+        val a = kotlin.math.abs(x)
+        if (a <= LIMIT_KNEE) return x.toInt().toShort()
+        val room = 32767f - LIMIT_KNEE
+        val y = LIMIT_KNEE + room * kotlin.math.tanh((a - LIMIT_KNEE) / room)
+        return (if (x < 0) -y else y).toInt().toShort()
     }
 
     private fun setup(sampleRate: Int) {
@@ -275,6 +289,8 @@ object EnvironmentAudio {
 
     /** 不加滤波时的截止频率（等于不处理） */
     private const val OPEN_CUTOFF = 20000f
+    /** 软限幅从这里开始压（约 -1.9 dBFS），之下完全不变 */
+    private const val LIMIT_KNEE = 26000f
     private const val WATER_CUTOFF = 450f
     /** 完全封闭的石头房里闷到多少 */
     private const val HARD_ROOM_CUTOFF = 10000f

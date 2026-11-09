@@ -302,6 +302,10 @@ class NeteaseMusicModule : Module() {
         MusicSources.selected = MusicSource.values()[musicSource.value]
         DangoMusic.instance.platform.syncKeyBindings(keyBindings)
         UpdateChecker.tick(checkUpdates.get())
+        // 放歌时原版背景音乐让路；停了、暂停了，原版照常放
+        try {
+            DangoMusic.instance.platform.holdVanillaMusic(enabled && MusicPlayer.state == MusicPlayer.State.PLAYING)
+        } catch (_: Throwable) {}
         if (!enabled) return
         // 歌词模块一直开着（显示与否由 3D lyrics 控制）；等配置读回之后再检查
         if (++tickCount > 5) lyrics()?.let { if (!it.enabled) it.enabled = true }
