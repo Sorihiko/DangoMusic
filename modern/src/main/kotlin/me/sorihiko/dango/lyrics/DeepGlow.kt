@@ -122,6 +122,7 @@ void main() {
     private val levelH = IntArray(LEVELS)
 
     private var savedFbo = 0
+    private var savedReadFbo = 0
     private val savedViewport = BufferUtils.createIntBuffer(16)
     private val savedClear = BufferUtils.createFloatBuffer(16)
     private var active = false
@@ -198,12 +199,19 @@ void main() {
     }
 
     private fun newFbo(tex: Int): Int {
-        val prev = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING)
+        val prevDraw = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
+        val prevRead = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING)
         val fbo = GL30.glGenFramebuffers()
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo)
         GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, tex, 0)
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, prev)
+        restoreFramebuffers(prevDraw, prevRead)
         return fbo
+    }
+
+    /** 读、写分开恢复：光影可能读一个、写另一个，用 GL_FRAMEBUFFER 一起绑回去会把读的那个换掉（#53） */
+    private fun restoreFramebuffers(draw: Int, read: Int) {
+        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, draw)
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, read)
     }
 
     private fun release() {
@@ -250,7 +258,8 @@ void main() {
         val h = window.height
         if (w <= 0 || h <= 0) return false
 
-        savedFbo = GL11.glGetInteger(0x8CA6 /* GL_FRAMEBUFFER_BINDING */)
+        savedFbo = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
+        savedReadFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING)
         savedViewport.clear()
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, savedViewport)
 
@@ -291,7 +300,7 @@ void main() {
         me.sorihiko.dango.modern.Gl.forget()
         active = false
         // 先切回原来的帧缓冲再记状态：最后恢复的应该是原来的画面，而不是发光画布
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, savedFbo)
+        restoreFramebuffers(savedFbo, savedReadFbo)
         GL11.glViewport(savedViewport.get(0), savedViewport.get(1), savedViewport.get(2), savedViewport.get(3))
         val state = GlState()
         Gl.depthTest(false)
@@ -334,7 +343,7 @@ void main() {
         }
 
         // 合成到原来的画面上（加法混合）
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, savedFbo)
+        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, savedFbo)
         GL11.glViewport(savedViewport.get(0), savedViewport.get(1), savedViewport.get(2), savedViewport.get(3))
         GL20.glUseProgram(progComp)
         GL20.glUniform1i(GL20.glGetUniformLocation(progComp, "tex"), 0)
@@ -353,7 +362,7 @@ void main() {
         me.sorihiko.dango.modern.Gl.forget()
         if (!active) return
         active = false
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, savedFbo)
+        restoreFramebuffers(savedFbo, savedReadFbo)
         GL11.glViewport(savedViewport.get(0), savedViewport.get(1), savedViewport.get(2), savedViewport.get(3))
     }
 

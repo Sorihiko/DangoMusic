@@ -186,6 +186,8 @@ class GlState {
     private val readFbo = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING)
     private val activeTex = GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE)
     private val binding = IntArray(2)
+    /** 当前单元不是 0 / 1 时（光影常用 2 号以上）它上面绑的贴图：中途新建贴图会绑到这个单元上，也要恢复（#53） */
+    private var activeBinding = 0
     private val blend = GL11.glIsEnabled(GL11.GL_BLEND)
     private val srcRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB)
     private val dstRgb = GL11.glGetInteger(GL14.GL_BLEND_DST_RGB)
@@ -207,6 +209,7 @@ class GlState {
             binding[i] = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D)
         }
         GL13.glActiveTexture(activeTex)
+        if (activeTex > GL13.GL_TEXTURE1) activeBinding = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D)
         Gl.forget()
         GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, scissorBox)
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport)
@@ -231,6 +234,7 @@ class GlState {
             Gl.bindTexture(binding[i])
         }
         Gl.activeTexture(activeTex)
+        if (activeTex > GL13.GL_TEXTURE1) Gl.bindTexture(activeBinding)
 
         Gl.blend(blend)
         Gl.blendFunc(srcRgb, dstRgb, srcAlpha, dstAlpha)

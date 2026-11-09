@@ -323,15 +323,28 @@ internal object McCompat {
     /** 原版视图矩阵的当前值（[Fixed] 算 MVP 用） */
     fun modelView(): Matrix4fc = RenderSystem.getModelViewMatrix()
 
+    /**
+     * 我们自己的字用的缓冲（#44）。
+     * 不能用原版的 renderBuffers().bufferSource()：那是原版共用的（拿着的物品、界面里的物品图集 / 实体预览等也在用），
+     * 在我们的帧缓冲上对它 endBatch 会把原版还没画的东西一起画到我们的图层上。
+     * 而且字形换了贴图页时它会提前把上一批画掉，那一下不在 [vanillaDraw] 里，可能画到别的帧缓冲上。
+     */
+    private val textBuffers by lazy {
+        net.minecraft.client.renderer.MultiBufferSource.immediate(com.mojang.blaze3d.vertex.ByteBufferBuilder(256 * 1024))
+    }
+
     /** 用原版字体画一段像素字（[pose] 是模型矩阵），画在当前绑定的帧缓冲上 */
     fun drawText(text: String, x: Float, y: Float, argb: Int, pose: Matrix4f) {
         val mc = Minecraft.getInstance()
-        val buffers = mc.renderBuffers().bufferSource()
-        mc.font.drawInBatch(
-            text, x, y, argb, false, pose, buffers,
-            Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
-        )
-        vanillaDraw { buffers.endBatch() }
+        val buffers = textBuffers
+        // 整段放在 vanillaDraw 里：中途因为换贴图页提前画掉的那一批也画在我们的帧缓冲上
+        vanillaDraw {
+            mc.font.drawInBatch(
+                text, x, y, argb, false, pose, buffers,
+                Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
+            )
+            buffers.endBatch()
+        }
     }
 
     /** 点阵字可以攒成一批交给原版（[drawTexts]） */
@@ -340,14 +353,16 @@ internal object McCompat {
     /** 一批点阵字一起交给原版：字都放进同一个缓冲，最后只收尾、换帧缓冲一次 */
     fun drawTexts(items: List<VanillaText>) {
         val mc = Minecraft.getInstance()
-        val buffers = mc.renderBuffers().bufferSource()
-        for (t in items) {
-            mc.font.drawInBatch(
-                t.text, t.x, t.y, t.argb, false, t.pose, buffers,
-                Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
-            )
+        val buffers = textBuffers
+        vanillaDraw {
+            for (t in items) {
+                mc.font.drawInBatch(
+                    t.text, t.x, t.y, t.argb, false, t.pose, buffers,
+                    Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
+                )
+            }
+            buffers.endBatch()
         }
-        vanillaDraw { buffers.endBatch() }
     }
 
     fun currentScreen(): Screen? = Minecraft.getInstance().screen

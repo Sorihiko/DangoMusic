@@ -439,11 +439,13 @@ object MusicPlayer {
      * 原来用的是游戏的 OpenAL 就继续等它，等不到再按平常的顺序打开。
      */
     private fun reopenOutput(gen: Int, old: AudioOutput, rate: Int, channels: Int): AudioOutput? {
-        DangoLogger.info("Dango Music: game audio restarted, reopening output")
+        // Java Sound 线路卡住（换了默认设备，#55）：不用等游戏的声音系统，直接按平常的顺序在新的默认设备上重开
+        val javaSound = old is JavaSoundOutput
+        DangoLogger.info(if (javaSound) "Dango Music: audio device changed, reopening output" else "Dango Music: game audio restarted, reopening output")
         try { old.close() } catch (_: Exception) {}
         val format = AudioFormat(rate.toFloat(), 16, channels, true, false)
         var out: AudioOutput? = null
-        val deadline = System.currentTimeMillis() + 5000L
+        val deadline = System.currentTimeMillis() + if (javaSound) 0L else 5000L
         while (out == null && gen == generation && System.currentTimeMillis() < deadline) {
             out = platformOutput(format)
             if (out == null) Thread.sleep(100)

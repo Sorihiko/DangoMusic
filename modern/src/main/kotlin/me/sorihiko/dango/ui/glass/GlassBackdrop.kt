@@ -64,6 +64,8 @@ class GlassBackdrop {
             else -> GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING)
         }
         try {
+            // 先切到 0 号单元再建贴图：不然新贴图会绑到光影正在用的单元上（#53）
+            Gl.activeTexture(GL13.GL_TEXTURE0)
             if (w != width || h != height || captureTexture == -1) resize(w, h)
 
             // resize 创建模糊目标时会改变绑定；采样仍须来自原来的画面。

@@ -47,19 +47,43 @@ interface AudioOutput {
     }
 }
 
-/** 电脑上默认的输出：Java Sound 的声卡线路 */
+/**
+ * 电脑上默认的输出：Java Sound 的声卡线路。
+ *
+ * 线路绑在打开时的那个设备上：放到一半换了默认设备（连上蓝牙耳机等），旧线路不再往外放，
+ * 缓冲一直是满的，直接调 line.write 会永远等下去，暂停 / 播放也救不回来（#55）。
+ * 所以自己等缓冲有空位：开着的时候播放位置超过 [STALL_MS] 没动，就当输出没了（[lost]），让播放器换一条新线路。
+ */
 class JavaSoundOutput(private val line: SourceDataLine) : AudioOutput {
     @Volatile private var softwareVolume = 1f
     private var scaled = ByteArray(0)
     override val positionMicros: Long get() = line.microsecondPosition
     override val isRunning: Boolean get() = line.isRunning
 
-    override fun start() = line.start()
-    override fun stop() = line.stop()
+    /** 我们让它放着（start 了、没 stop）。线路自己的 isRunning 在设备没了时不一定可靠 */
+    @Volatile private var started = false
+    @Volatile private var dead = false
+    override val lost: Boolean get() = dead
+
+    /** 上次看到播放位置往前走的时间，和那时的位置 */
+    private var lastFrame = -1L
+    private var lastMoved = 0L
+
+    override fun start() {
+        lastMoved = System.currentTimeMillis()
+        started = true
+        line.start()
+    }
+
+    override fun stop() {
+        started = false
+        line.stop()
+    }
+
     override fun write(data: ByteArray, offset: Int, length: Int) {
         val volume = softwareVolume
         if (volume == 1f) {
-            line.write(data, offset, length)
+            writeAll(data, offset, length)
         } else {
             require(length % 2 == 0 && offset >= 0 && length >= 0 && offset <= data.size - length)
             if (scaled.size < length) scaled = ByteArray(length)
@@ -70,10 +94,52 @@ class JavaSoundOutput(private val line: SourceDataLine) : AudioOutput {
                 scaled[i] = adjusted.toByte(); scaled[i+1] = (adjusted shr 8).toByte()
                 i += 2
             }
-            line.write(scaled, 0, length)
+            writeAll(scaled, 0, length)
         }
     }
-    override fun drain() = line.drain()
+
+    /** 有多少空位写多少；没空位就等，期间检查声卡是不是还在放 */
+    private fun writeAll(data: ByteArray, offset: Int, length: Int) {
+        var off = offset
+        var left = length
+        val frame = line.format.frameSize.coerceAtLeast(1)
+        while (left > 0) {
+            if (!line.isOpen) return   // 被关掉了（切歌、停止）：和原来一样直接返回
+            val room = line.available() / frame * frame
+            if (room > 0) {
+                val n = line.write(data, off, minOf(left, room))
+                off += n
+                left -= n
+                if (n > 0) continue
+            }
+            checkStall()
+            Thread.sleep(5)
+        }
+    }
+
+    /** 开着的时候播放位置太久没动：输出没了 */
+    private fun checkStall() {
+        val now = System.currentTimeMillis()
+        val pos = line.longFramePosition
+        if (!started || pos != lastFrame) {
+            lastFrame = pos
+            lastMoved = now
+            return
+        }
+        if (now - lastMoved > STALL_MS) {
+            dead = true
+            throw IllegalStateException("Audio device stopped playing")
+        }
+    }
+
+    override fun drain() {
+        // 等缓冲放空（同样检查卡住），剩下的交给 line.drain
+        while (line.isOpen && line.available() < line.bufferSize) {
+            checkStall()
+            Thread.sleep(10)
+        }
+        if (line.isOpen) line.drain()
+    }
     override fun flush() = line.flush()
     override fun close() = line.close()
 
@@ -88,5 +154,10 @@ class JavaSoundOutput(private val line: SourceDataLine) : AudioOutput {
             // Some formats/devices expose no gain control. The user's volume must still apply.
             softwareVolume = requested
         }
+    }
+
+    private companion object {
+        /** 播放位置这么久没动就当设备没了（正常缓冲约 0.25 秒，偶尔卡一下也远小于这个） */
+        const val STALL_MS = 2000L
     }
 }
