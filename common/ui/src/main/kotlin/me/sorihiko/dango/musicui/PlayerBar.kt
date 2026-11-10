@@ -20,6 +20,11 @@ import kotlin.math.max
 /** 底部播放栏：左边当前歌曲，中间控制按钮 + 进度条，右边单曲循环 / 随机 + 音量 */
 internal class PlayerBar(private val screen: MusicScreen, private val module: NeteaseMusicModule) {
     private val ui = screen.ui
+    /** 变速变调、均衡器的按钮和面板（同时只开一个） */
+    val tune = TunePanel(ui).also { t -> t.onOpen = { eq.open = false } }
+    val eq: EqPanel = EqPanel(ui).also { e -> e.onOpen = { tune.open = false } }
+    /** 开着的那个面板（没开是空的）：画下面的内容时鼠标在这里不算悬停 */
+    val popupRect: LayoutBounds get() = if (eq.panelRect.width > 0f) eq.panelRect else tune.panelRect
 
     private var lastSubtitle = ""
     private var subtitleAt = 0L
@@ -53,7 +58,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
     fun draw(bar: LayoutBounds) {
         val ctx = ui.ctx
         drawPanel(bar)
-        val t = MusicPlayer.current
+        val t = MusicPlayer.shownTrack
         // 上面一排放封面、按钮和音量（中线在 [ry]），下面是横贯整条栏的进度条
         val ry = bar.y + 34f
 
@@ -65,14 +70,14 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         ctx.drawShape(coverBox, ShapeStyle(Color.TRANSPARENT, 13f, 1f, Color(1f, 1f, 1f, 0.10f)))
         val infoX = coverBox.right + 12f
         // 窗口窄时歌名区跟着缩短，别压到中间的按钮上（红心也要留位置）
-        val likeShown = t != null && t.source == MusicSource.NETEASE && NeteaseApi.loggedIn
+        val likeShown = t != null && !MusicPlayer.external && t.source == MusicSource.NETEASE && NeteaseApi.loggedIn
         val leftLimit = bar.x + bar.width / 2f - 96f
         val infoW = (leftLimit - infoX - (if (likeShown) 44f else 8f)).coerceIn(40f, 220f)
         val title = t?.name ?: I18n.text("Not playing")
         ui.text(ui.trim(title, infoW, 13f, Theme.FONT_SEMIBOLD), infoX, coverBox.y + 9f, 13f, Theme.TEXT_PRIMARY, Theme.FONT_SEMIBOLD)
         val sub = when {
             t == null -> "-"
-            MusicPlayer.message.isNotEmpty() -> I18n.message(MusicPlayer.message)
+            !MusicPlayer.external && MusicPlayer.message.isNotEmpty() -> I18n.message(MusicPlayer.message)
             else -> t.artists.joinToString(" / ")
         }
         // 一起听：房主没开"允许成员控制"时点了切歌 / 暂停 / 拖进度
@@ -138,7 +143,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         val kNext = button(nextB, nextA)
         val kQueue = button(queueB, queueA)
         // 播放 ↔ 暂停：两个图标交叉淡入淡出，暂停的两道竖条从中间长出来，三角形收小淡出
-        val p = playMorph.tick(if (MusicPlayer.state == MusicPlayer.State.PLAYING) 1f else 0f).coerceIn(0f, 1f)
+        val p = playMorph.tick(if (MusicPlayer.shownState == MusicPlayer.State.PLAYING) 1f else 0f).coerceIn(0f, 1f)
         if (p > 0.01f) {
             ctx.pushOpacity(p)
             val bh = 16f * kPlay * (0.55f + 0.45f * p)
@@ -169,8 +174,8 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         }
 
         // 进度条：在栏的底部，两端上方标时间（当前时间亮一点）；鼠标移上去变粗、出现圆钮
-        val dur = MusicPlayer.durationMs
-        val pos = MusicPlayer.positionMs
+        val dur = MusicPlayer.shownDurationMs
+        val pos = MusicPlayer.shownPositionMs
         // 两头各留一段，不贴着播放栏的圆角
         progRect = LayoutBounds(bar.x + PROGRESS_INSET, bar.bottom - 11f, bar.width - PROGRESS_INSET * 2, 3f)
         val kn = progKnob.tick(if (seeking || progRect.expand(0f, 6f).contains(ui.mx, ui.my)) 1f else 0f).coerceIn(0f, 1.2f)
@@ -197,8 +202,8 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         // 右边喇叭图标的右边缘对齐进度条的右端
         val rightEdge = bar.right - PROGRESS_INSET - 14f
         val rightSpace = rightEdge - (cx + 112f + 28f)
-        val showToggles = rightSpace >= 230f
-        val volW = (rightSpace - 46f - (if (showToggles) 84f else 0f)).coerceIn(48f, 110f)
+        val showToggles = rightSpace >= 310f
+        val volW = (rightSpace - 46f - 80f - (if (showToggles) 84f else 0f)).coerceIn(48f, 110f)
         volRect = LayoutBounds(rightEdge - volW, vy - 2f, volW, 4f)
         speaker(volRect.x - 22f, vy, false)
         speaker(volRect.right + 9f, vy, true)
@@ -213,6 +218,13 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
             val repeatB = LayoutBounds(shB.x - 40f, vy - 14f, 32f, 28f)
             toggleButton(repeatB, vy, MusicPlayer.repeatOne, repeatA, "↻") { module.toggleRepeatOne() }
         }
+        // 变速变调：在随机 / 单曲循环左边；窗口窄、那两个藏起来时紧挨着音量
+        val tuneX = if (showToggles) volRect.x - 152f else volRect.x - 72f
+        tune.drawButton(LayoutBounds(tuneX, vy - 14f, 32f, 28f), vy)
+        // 均衡器：再往左一个
+        eq.drawButton(LayoutBounds(tuneX - 40f, vy - 14f, 32f, 28f), vy)
+        tune.drawPanel(bar)
+        eq.drawPanel(bar)
     }
 
     /**
@@ -233,7 +245,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         val ctx = ui.ctx
         val hover = playA.hover.tick(if (ui.hover(b)) 1f else 0f).coerceIn(0f, 1f)
         val k = 1f + playA.press.tick(0f) * 0.14f + hover * 0.06f
-        if (MusicPlayer.state == MusicPlayer.State.PLAYING) {
+        if (MusicPlayer.shownState == MusicPlayer.State.PLAYING) {
             val phase = (System.nanoTime() / 1e9 % 2.8 / 2.8).toFloat()
             if (phase < 0.7f) {
                 val ring = b.scaled(k * (1f + 0.4f * phase / 0.7f))
@@ -282,8 +294,10 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
 
     /** 点在进度条 / 音量条上就处理掉，返回 true；按在进度条上开始拖动 */
     fun mouseDown(mx: Int, my: Int): Boolean {
+        if (tune.mouseDown(mx, my)) return true
+        if (eq.mouseDown(mx, my)) return true
         if (progRect.expand(0f, 6f).contains(mx, my)) {
-            if (MusicPlayer.durationMs > 0) {
+            if (MusicPlayer.shownDurationMs > 0) {
                 seeking = true
                 seekFraction = fractionAt(mx)
             }
@@ -298,6 +312,14 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
 
     /** 按住拖动：拖进度条时跟着鼠标走（拖出条外也算），否则拖音量 */
     fun mouseDrag(mx: Int, my: Int) {
+        if (tune.dragging) {
+            tune.mouseDrag(mx)
+            return
+        }
+        if (eq.dragging) {
+            eq.mouseDrag(my)
+            return
+        }
         if (seeking) {
             seekFraction = fractionAt(mx)
             return
@@ -307,9 +329,11 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
 
     /** 松开鼠标：拖进度条的话现在才跳过去 */
     fun mouseUp() {
+        tune.mouseUp()
+        eq.mouseUp()
         if (!seeking) return
         seeking = false
-        val dur = MusicPlayer.durationMs
+        val dur = MusicPlayer.shownDurationMs
         if (dur > 0) MusicPlayer.seek((seekFraction * dur).toLong())
     }
 

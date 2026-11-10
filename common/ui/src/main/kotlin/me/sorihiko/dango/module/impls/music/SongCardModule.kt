@@ -67,9 +67,9 @@ class SongCardModule : Module() {
         val dt = if (lastNanos == 0L) 16f else ((now - lastNanos) / 1e6f).coerceAtMost(50f)
         lastNanos = now
 
-        val t = MusicPlayer.current
-        val visible = t != null && MusicPlayer.active &&
-            (MusicPlayer.state != MusicPlayer.State.PAUSED || showPaused.get())
+        val t = MusicPlayer.shownTrack
+        val visible = t != null && MusicPlayer.shownActive &&
+            (MusicPlayer.shownState != MusicPlayer.State.PAUSED || showPaused.get())
         appear += ((if (visible) 1f else 0f) - appear) * (1f - kotlin.math.exp(-dt / 120f))
         if (appear < 0.01f || t == null) return
 
@@ -135,7 +135,7 @@ class SongCardModule : Module() {
      *   0:14 ━━━━━━━━━━━━━━━━━━ -6:18
      */
     private fun drawCard(ctx: GuiCanvas, b: LayoutBounds, chatOpen: Boolean) {
-        val t = MusicPlayer.current ?: return
+        val t = MusicPlayer.shownTrack ?: return
         val k = scale.value
         ctx.drawGlass(b, cardGlass(k))
         if (chatOpen) ctx.drawShape(b, ShapeStyle(Color(0f, 0f, 0f, 0f), 24f * k, 1f, Theme.ACCENT))
@@ -148,7 +148,7 @@ class SongCardModule : Module() {
         if (loc != null) ctx.drawImage(cover, loc) else ctx.drawShape(cover, ShapeStyle(Theme.TRACK, 9f * k))
 
         // 右上角的声波（播放中跳动，暂停时变平）
-        val playing = MusicPlayer.state == MusicPlayer.State.PLAYING
+        val playing = MusicPlayer.shownState == MusicPlayer.State.PLAYING
         val now = System.nanoTime() / 1e9
         val bars = 5
         val bw = 2.6f * k
@@ -173,8 +173,8 @@ class SongCardModule : Module() {
         text(ctx, trim(t.artists.joinToString(" / "), waveRight - tx, 13f * k), tx, cover.y + 28f * k, 13f * k, Theme.TEXT_SECONDARY)
 
         // 进度：左边已播放，右边剩余（负号），中间粗进度条
-        val dur = MusicPlayer.durationMs
-        val pos = MusicPlayer.positionMs.coerceIn(0L, max(0L, dur))
+        val dur = MusicPlayer.shownDurationMs
+        val pos = MusicPlayer.shownPositionMs.coerceIn(0L, max(0L, dur))
         val ts = 10.5f * k
         val rowCy = b.bottom - pad - 5f * k
         val left = fmt(pos)

@@ -279,13 +279,34 @@ internal object McCompat {
         bindFramebuffer(GL30.GL_FRAMEBUFFER, mainFramebuffer())   // 原版记的：主画面
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, draw)     // 实际的：我们的
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, read)
+        redirectDraw = draw
+        redirectRead = read
         try {
             block()
         } finally {
+            redirectDraw = -1
             bindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, draw)
             bindFramebuffer(GL30.GL_READ_FRAMEBUFFER, read)
             Gl.viewport(savedViewport[0], savedViewport[1], savedViewport[2], savedViewport[3])
         }
+    }
+
+    /** [vanillaDraw] 里实际要画到的帧缓冲；-1 = 不在 vanillaDraw 里 */
+    private var redirectDraw = -1
+    private var redirectRead = -1
+
+    /**
+     * 原版每画完一批（RenderPass 结束）都会把帧缓冲绑回 0，也记进它自己的缓存；
+     * 再画下一批时缓存对不上，它就真的去绑主画面了，后面的东西全画到主画面上。
+     * 一批字换了字形贴图页就会分成好几批：发光时只有第一批落在发光画布上，其余的字没有光晕。
+     * 所以在 [vanillaDraw] 里每次可能开新一批之前调一下：被换掉了就重新借道。
+     */
+    private fun keepRedirect() {
+        if (redirectDraw < 0) return
+        if (GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING) == redirectDraw) return
+        bindFramebuffer(GL30.GL_FRAMEBUFFER, mainFramebuffer())
+        GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, redirectDraw)
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, redirectRead)
     }
 
     /** 世界画完、开始画我们的东西之前：记下世界的投影，切到主画面 */
@@ -333,6 +354,12 @@ internal object McCompat {
         net.minecraft.client.renderer.MultiBufferSource.immediate(com.mojang.blaze3d.vertex.ByteBufferBuilder(256 * 1024))
     }
 
+    /** 交给原版画字用的：每次要缓冲（换贴图页时会在这里提前画掉上一批）之前先确认还画在我们的帧缓冲上 */
+    private val redirectedText = net.minecraft.client.renderer.MultiBufferSource { type ->
+        keepRedirect()
+        textBuffers.getBuffer(type)
+    }
+
     /** 用原版字体画一段像素字（[pose] 是模型矩阵），画在当前绑定的帧缓冲上 */
     fun drawText(text: String, x: Float, y: Float, argb: Int, pose: Matrix4f) {
         val mc = Minecraft.getInstance()
@@ -340,9 +367,10 @@ internal object McCompat {
         // 整段放在 vanillaDraw 里：中途因为换贴图页提前画掉的那一批也画在我们的帧缓冲上
         vanillaDraw {
             mc.font.drawInBatch(
-                text, x, y, argb, false, pose, buffers,
+                text, x, y, argb, false, pose, redirectedText,
                 Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
             )
+            keepRedirect()
             buffers.endBatch()
         }
     }
@@ -357,10 +385,11 @@ internal object McCompat {
         vanillaDraw {
             for (t in items) {
                 mc.font.drawInBatch(
-                    t.text, t.x, t.y, t.argb, false, t.pose, buffers,
+                    t.text, t.x, t.y, t.argb, false, t.pose, redirectedText,
                     Font.DisplayMode.SEE_THROUGH, 0, LightTexture.FULL_BRIGHT,
                 )
             }
+            keepRedirect()
             buffers.endBatch()
         }
     }

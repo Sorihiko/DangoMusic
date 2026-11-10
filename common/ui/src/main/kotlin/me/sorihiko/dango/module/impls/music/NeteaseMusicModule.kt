@@ -21,6 +21,7 @@ import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.NeteaseApi
 import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.MusicSource
+import me.sorihiko.dango.music.SystemMedia
 import me.sorihiko.dango.platform.Keys
 import me.sorihiko.dango.platform.allowedPlayerKey
 import me.sorihiko.dango.platform.PlayerAction
@@ -130,6 +131,12 @@ class NeteaseMusicModule : Module() {
 
     @ModuleValue("Show sound rays", "Debug: draw the rays used to measure the room, and its numbers")
     private val envRays = BooleanValue(false)
+
+    @ModuleValue("Show other players", "When Dango isn't playing, show the song from another app on Windows (Spotify, Apple Music…) with lyrics")
+    private val systemMedia = BooleanValue(false)
+
+    @ModuleValue("Other player lyrics offset", "Other apps report their progress a little late; positive moves lyrics later, negative earlier")
+    private val systemMediaOffset = IntValue(-3000, 3000, 0)
 
     @ModuleValue("Check for updates", "Look for a newer release on GitHub once per launch and remind you")
     val checkUpdates = BooleanValue(true)
@@ -302,9 +309,12 @@ class NeteaseMusicModule : Module() {
         MusicSources.selected = MusicSource.values()[musicSource.value]
         DangoMusic.instance.platform.syncKeyBindings(keyBindings)
         UpdateChecker.tick(checkUpdates.get())
-        // 放歌时原版背景音乐让路；停了、暂停了，原版照常放
+        // 别的播放器：开关变了才启动 / 关掉后台读取
+        SystemMedia.enabled = enabled && systemMedia.get()
+        SystemMedia.offsetMs = systemMediaOffset.value.toLong()
+        // 放歌时（包括显示着的别的播放器在放）原版背景音乐让路；停了、暂停了，原版照常放
         try {
-            DangoMusic.instance.platform.holdVanillaMusic(enabled && MusicPlayer.state == MusicPlayer.State.PLAYING)
+            DangoMusic.instance.platform.holdVanillaMusic(enabled && MusicPlayer.shownState == MusicPlayer.State.PLAYING)
         } catch (_: Throwable) {}
         if (!enabled) return
         // 歌词模块一直开着（显示与否由 3D lyrics 控制）；等配置读回之后再检查

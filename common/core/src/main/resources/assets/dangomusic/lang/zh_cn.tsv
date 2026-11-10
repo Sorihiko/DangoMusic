@@ -427,3 +427,32 @@ The server rejected this Listen Together action.	服务器拒绝了这次一起�
 Cannot reach Listen Together on this server. Please retry.	连不上当前服务器的一起听，请重试
 This server supports Listen Together directly. No Firebase or proxy needed.	当前服务器可以直接一起听，不用 Firebase，也不用代理
 Syncing through the current server	经当前服务器同步
+Show other players	显示其它播放器
+When Dango isn't playing, show the song from another app on Windows (Spotify, Apple Music…) with lyrics	Dango 没在放歌时，显示 Windows 上别的 App（Spotify、Apple Music 等）正在放的歌和歌词
+Other player lyrics offset	其它播放器歌词偏移
+Other apps report their progress a little late; positive moves lyrics later, negative earlier	别的 App 报的进度会晚一点；正数让歌词往后，负数往前
+Other players	其它播放器
+Windows media	Windows 媒体
+Sound tuning	变速变调
+Speed · Pitch	速度 · 音调
+Speed	速度
+Pitch	音调
+auto	自动
+Pitch follows speed	音调跟着速度
+Remember for this song	按歌记住
+Fixed at 1x in Listen Together	一起听时固定 1x
+Equalizer	均衡器
+Preamp	前级
+Presets	预设
+Use this EQ, speed and pitch next time this song plays	这首歌下次放还用这套均衡、速度和音调
+Flat	平直
+Bass Boost	低音增强
+Bass Destroyer	重低音
+Treble Boost	高音增强
+Vocal	人声
+Rock	摇滚
+Electronic	电子
+Classical	古典
+Loudness	响度
+V-Shape	V 形
+Night	夜间

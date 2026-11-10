@@ -250,9 +250,9 @@ class LyricsModule : Module() {
     // ---------------------------------------------------------------- 当前歌曲 / 时钟
 
     private fun nowPlaying(): NowPlaying? {
-        if (!MusicPlayer.active) return null
-        val t = MusicPlayer.current ?: return null
-        return NowPlaying(t, MusicPlayer.state == MusicPlayer.State.PLAYING)
+        if (!MusicPlayer.shownActive) return null
+        val t = MusicPlayer.shownTrack ?: return null
+        return NowPlaying(t, MusicPlayer.shownState == MusicPlayer.State.PLAYING)
     }
 
     private val notFoundAt = ConcurrentHashMap<String, Long>()
@@ -270,7 +270,9 @@ class LyricsModule : Module() {
         val track = s.track
         fetcher.execute {
             try {
-                val result = me.sorihiko.dango.music.MusicSources.api(track.source).lyrics(track)
+                // 别的播放器放的、音源里配不上的歌：没有可查的 ID
+                val result = if (track.nativeId.startsWith(me.sorihiko.dango.music.SystemMedia.PLACEHOLDER_PREFIX)) null
+                    else me.sorihiko.dango.music.MusicSources.api(track.source).lyrics(track)
                 if (result == null) notFoundAt[key] = System.nanoTime() else notFoundAt.remove(key)
                 cache[key] = result ?: NotFound
             } catch (_: Exception) {
@@ -299,7 +301,7 @@ class LyricsModule : Module() {
         }
         lastSeenNanos = now
         requestLyrics(s)
-        val p = MusicPlayer.positionMs.toDouble()
+        val p = MusicPlayer.shownPositionMs.toDouble()
         if (s.key != currentKey) {
             currentKey = s.key
             songPos = p
@@ -386,7 +388,7 @@ class LyricsModule : Module() {
         val deepGlow = gfx.glow
         gfx.guarded {
             val songNow = songPos.toLong()
-            val beat = if (s != null) MusicPlayer.beatPulse(MusicPlayer.positionMs) else 0f
+            val beat = if (s != null && !MusicPlayer.external) MusicPlayer.beatPulse(MusicPlayer.shownPositionMs) else 0f
             if (!worldMode.get()) {
                 // 3D lyrics 关掉 = 不显示歌词
             } else if (textFlash.get()) {

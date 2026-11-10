@@ -91,8 +91,8 @@ class DynamicIslandModule : Module() {
         temp = null
         contentAlpha = 0f
         lastNanos = 0L
-        lastTrackId = MusicPlayer.current?.key ?: ""
-        lastState = MusicPlayer.state
+        lastTrackId = MusicPlayer.shownTrack?.key ?: ""
+        lastState = MusicPlayer.shownState
     }
 
     private fun show(kind: Kind, ms: Long) {
@@ -101,8 +101,8 @@ class DynamicIslandModule : Module() {
     }
 
     private fun watchMusic() {
-        val cur = MusicPlayer.current
-        val st = MusicPlayer.state
+        val cur = MusicPlayer.shownTrack
+        val st = MusicPlayer.shownState
         if (cur == null) {
             lastTrackId = ""
         } else if (cur.key != lastTrackId) {
@@ -134,7 +134,7 @@ class DynamicIslandModule : Module() {
         val t = temp
         if (t != null && System.currentTimeMillis() < tempUntil) {
             val ok = when (t) {
-                Kind.SONG -> MusicPlayer.current != null
+                Kind.SONG -> MusicPlayer.shownTrack != null
                 Kind.UPDATE, Kind.IDLE -> true
             }
             if (ok) return t
@@ -143,13 +143,13 @@ class DynamicIslandModule : Module() {
         return Kind.IDLE
     }
 
-    private fun musicIdle() = showMusic.get() && MusicPlayer.current != null && MusicPlayer.active
+    private fun musicIdle() = showMusic.get() && MusicPlayer.shownTrack != null && MusicPlayer.shownActive
 
     // ---------------------------------------------------------------- 尺寸（逻辑像素）
 
     private fun sizeOf(kind: Kind): Pair<Float, Float> = when (kind) {
         Kind.SONG -> {
-            val t = MusicPlayer.current
+            val t = MusicPlayer.shownTrack
             val tw = if (t == null) 0f else max(
                 width(t.name, 14f, Theme.FONT_SEMIBOLD).coerceAtMost(260f),
                 width(t.artists.joinToString(" / "), 11f).coerceAtMost(260f),
@@ -161,7 +161,7 @@ class DynamicIslandModule : Module() {
             (16f + 8f + 10f + tw.coerceAtMost(320f) + 18f) to 52f
         }
         Kind.IDLE -> if (musicIdle()) {
-            val t = MusicPlayer.current!!
+            val t = MusicPlayer.shownTrack!!
             (9f + 22f + 9f + width(t.name, 12f, Theme.FONT_SEMIBOLD).coerceAtMost(170f) + 12f + 14f + 12f) to 32f
         } else {
             (14f + 6f + 8f + idleWidth() + 16f) to 32f
@@ -289,11 +289,11 @@ class DynamicIslandModule : Module() {
     }
 
     private fun drawMusicIdle(ctx: GuiCanvas, b: LayoutBounds) {
-        val t = MusicPlayer.current ?: return
+        val t = MusicPlayer.shownTrack ?: return
         // 胶囊两头是半圆：封面往里挪一点、圆角跟着胶囊的弧度走，看起来才居中
         val cover = LayoutBounds(b.x + 9f, b.y + 5f, 22f, 22f)
         drawCover(ctx, cover, t.let { CoverCache.trackRounded(it, 0.36f) ?: CoverCache.track(it) })
-        val playing = MusicPlayer.state == MusicPlayer.State.PLAYING
+        val playing = MusicPlayer.shownState == MusicPlayer.State.PLAYING
         val tx = cover.right + 9f
         val title = trim(t.name, 170f, 12f, Theme.FONT_SEMIBOLD)
         text(ctx, title, tx, b.y + 16f - 12f * 0.39f, 12f, if (playing) Theme.TEXT_PRIMARY else Theme.TEXT_SECONDARY, Theme.FONT_SEMIBOLD)
@@ -311,14 +311,14 @@ class DynamicIslandModule : Module() {
     }
 
     private fun drawSong(ctx: GuiCanvas, b: LayoutBounds) {
-        val t = MusicPlayer.current ?: return
+        val t = MusicPlayer.shownTrack ?: return
         val cover = LayoutBounds(b.x + 10f, b.y + 10f, 56f, 56f)
         drawCover(ctx, cover, CoverCache.trackRounded(t) ?: CoverCache.track(t))
-        val playing = MusicPlayer.state == MusicPlayer.State.PLAYING
+        val playing = MusicPlayer.shownState == MusicPlayer.State.PLAYING
         val tx = cover.right + 10f
         val tw = b.right - 14f - tx
 
-        val label = when (MusicPlayer.state) {
+        val label = when (MusicPlayer.shownState) {
             MusicPlayer.State.PAUSED -> I18n.text("PAUSED")
             MusicPlayer.State.LOADING -> I18n.text("LOADING")
             else -> I18n.text("NOW PLAYING")
@@ -330,9 +330,9 @@ class DynamicIslandModule : Module() {
 
         val bar = LayoutBounds(tx, b.y + 60f, tw, 3f)
         ctx.drawShape(bar, ShapeStyle(Theme.TRACK, 1.5f))
-        val dur = MusicPlayer.durationMs
+        val dur = MusicPlayer.shownDurationMs
         if (dur > 0) {
-            val f = (MusicPlayer.positionMs.toDouble() / dur).coerceIn(0.0, 1.0).toFloat()
+            val f = (MusicPlayer.shownPositionMs.toDouble() / dur).coerceIn(0.0, 1.0).toFloat()
             ctx.drawShape(LayoutBounds(bar.x, bar.y, max(3f, bar.width * f), bar.height), ShapeStyle(Theme.TEXT_PRIMARY, 1.5f))
         }
     }

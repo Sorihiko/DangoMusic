@@ -258,8 +258,8 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
         ly.take().let { if (it.isNotEmpty()) lyrics += Group("Other", "More", ly.m, false, it) }
 
         val player = Src(module,
-            deps = mapOf("envRain" to "envAudio", "envStrength" to "envAudio", "envRays" to "envAudio"),
-            fmts = mapOf("volume" to ::percent, "envStrength" to ::percent))
+            deps = mapOf("envRain" to "envAudio", "envStrength" to "envAudio", "envRays" to "envAudio", "systemMediaOffset" to "systemMedia"),
+            fmts = mapOf("volume" to ::percent, "envStrength" to ::percent, "systemMediaOffset" to { v: Any -> "${(v as IntValue).value} ms" }))
         player.left.remove("shuffle")   // 随机播放用播放栏上的按钮就够了，设置页不再显示（状态照样保存）
         player.left.remove("repeatOne") // 单曲循环同样通过播放栏控制
         player.left.remove("musicSource") // 音源通过侧栏切换。
@@ -270,9 +270,15 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
         // 先取走，免得落进下面的 Hotkeys 组
         val updates = player.take(listOf("checkUpdates"))
         val environment = player.take(listOf("envAudio", "envRain", "envStrength", "envRays"))
+        // 别的播放器只在 Windows 10+ 读得到，其它系统不显示
+        val otherPlayers = player.take(listOf("systemMedia", "systemMediaOffset"))
+            .takeIf { me.sorihiko.dango.music.SystemMedia.supported }
         val music = listOf(
             Group("Player", "Playback", player.m, false, player.take(listOf("volume", "normalize", "audioOutput", "language"))),
             Group("Environment audio", "Sound around you", player.m, false, environment),
+        ) + listOfNotNull(
+            otherPlayers?.let { Group("Other players", "Windows media", player.m, false, it) },
+        ) + listOf(
             Group("Hotkeys", "Click, then press a key · Backspace clears", player.m, false, player.take()),
             Group("Song card", "Overlay", card.m, true, card.take()),
             nowPlaying,

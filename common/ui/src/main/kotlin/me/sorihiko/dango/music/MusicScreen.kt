@@ -455,11 +455,13 @@ class MusicScreen(
         val barRect = LayoutBounds(barX, win.bottom - pad - 8f - barH, win.right - pad - 12f - barX, barH)
         val content = LayoutBounds(mainX, win.y + pad + 14f, mainW, win.bottom - pad - (win.y + pad + 14f))
 
+        ui.popup = bar.popupRect.takeIf { it.width > 0f }
         sidebar.draw(side)
         ui.occluder = barRect
         ui.bottomInset = content.bottom - barRect.y + 10f
         drawContent(content)
         ui.occluder = null
+        ui.popup = null
         this.barRect = barRect
     }
 
