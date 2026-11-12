@@ -141,4 +141,6 @@
 
 第三方：[Inter](https://github.com/rsms/inter)（OFL 1.1）、[JLayer](https://central.sonatype.com/artifact/javazoom/jlayer/1.0.1)（LGPL）、[JOrbis / Jogg](https://github.com/ymnk/jorbis)（LGPL 2.0+）、[ZXing](https://github.com/zxing/zxing)（Apache 2.0）、Kotlin 标准库（Apache 2.0）。
 
+界面参考：播放器排版参考 [MuoniumPlayer](https://github.com/zihe114514/MuoniumPlayer-multiversion)；歌手页布局参考 [SoundCloud-Desktop](https://github.com/zxcloli666/SoundCloud-Desktop)。
+
 许可证：[GPL-3.0](LICENSE)

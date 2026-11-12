@@ -13,6 +13,18 @@ object KugouMusicSource : MusicSourceApi {
     override fun playlists() = catalog.playlists()
     override fun recommend() = catalog.recommend()
     override fun charts() = catalog.charts()
+    override val canLike get() = NativeAccounts.get(source) != null
+    override fun likedState(track: NeteaseTrack) = track.source == source && catalog.likedState(track)
+    override fun setLiked(track: NeteaseTrack, like: Boolean) {
+        if (track.source != source) throw SourceAccessException("This song is not from Kugou.")
+        catalog.setLiked(track, like)
+    }
+    override val canAddToPlaylist get() = NativeAccounts.get(source) != null
+    override fun editablePlaylists() = catalog.editable()
+    override fun addToPlaylist(playlist: NeteasePlaylist, track: NeteaseTrack): Boolean {
+        if (track.source != source) throw SourceAccessException("This song is not from Kugou.")
+        return catalog.add(playlist, track)
+    }
     override fun playlistTracks(id: Long) = KugouArtists.albumTracksFor(id) ?: if (id == CloudDrives.KUGOU_ID) {
         val account = NativeAccounts.get(source) ?: throw SourceAccessException("Log in to Kugou to read your cloud drive.")
         KugouCloud().tracks(account)

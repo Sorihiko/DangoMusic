@@ -23,6 +23,26 @@ object QqMusicSource : MusicSourceApi {
     override fun artistAlbums(id: String) = if (id.matches(Regex("[A-Za-z0-9]{1,64}"))) QqArtists.artistAlbums(id) else emptyList()
     override fun findArtist(name: String) = QqArtists.findArtist(name)
 
+    // 红心先不做：往"我喜欢"（dirId 201）写，QQ 只认真 App 的设备身份，我们的登录会被拒（80105）
+    override val canAddToPlaylist get() = NativeAccounts.get(source) != null
+    override fun editablePlaylists() = catalog.editable()
+    override fun addToPlaylist(playlist: NeteasePlaylist, track: NeteaseTrack): Boolean {
+        if (track.source != source) throw SourceAccessException("This song is not from QQ Music.")
+        return catalog.add(playlist, songIdOf(track))
+    }
+
+    /** 写歌单要数字歌曲 ID：解析时有就用，没有按 mid 查一次 */
+    private fun songIdOf(track: NeteaseTrack): Long {
+        if (track.sourceSongId > 0) return track.sourceSongId
+        val data = cgi("music.pf_song_detail_svr", "get_song_detail_yqq", JsonObject().apply {
+            addProperty("song_type", 0); addProperty("song_mid", track.nativeId)
+        })
+        val id = data.obj("track_info")?.number("id") ?: 0L
+        if (id <= 0) throw SourceAccessException("QQ Music could not find this song. Please retry.")
+        track.sourceSongId = id
+        return id
+    }
+
     internal fun profileId(account: NativeAccount): String {
         try {
             val profile = cgi("music.UserInfo.userInfoServer", "GetLoginUserInfo", JsonObject(), account)
@@ -53,11 +73,15 @@ object QqMusicSource : MusicSourceApi {
         val root = AuthHttp.request(source, "https://u.y.qq.com/cgi-bin/musicu.fcg",
             account?.cookies ?: java.net.CookieManager(), payload.toString()).json()
         val block = root.obj("req_0")
-        if (!root.has("code") || root.number("code") != 0L || block == null || !block.has("code") || block.number("code") != 0L)
+        val data = block?.obj("data")
+        if (!root.has("code") || root.number("code") != 0L || block == null || !block.has("code") || block.number("code") != 0L ||
+            (data != null && data.has("code") && data.number("code") != 0L)) {
+            // 只记接口名和错误码，不记账号 / 歌曲信息
+            me.sorihiko.dango.DangoLogger.warn("QQ Music request failed: {}.{} code={} req={} data={} login={}", module, method,
+                root.number("code"), block?.number("code") ?: -1, data?.number("code") ?: -1, account != null)
             throw SourceAccessException("QQ Music request failed. Please retry or log in again.")
-        val data = block.obj("data") ?: throw SourceAccessException("QQ Music returned an incomplete response. Please retry.")
-        if (data.has("code") && data.number("code") != 0L) throw SourceAccessException("QQ Music request failed. Please retry or log in again.")
-        return data
+        }
+        return data ?: throw SourceAccessException("QQ Music returned an incomplete response. Please retry.")
     }
 
     private fun json(url: String): JsonObject {
@@ -88,6 +112,7 @@ object QqMusicSource : MusicSourceApi {
                 source, mid, song.text("strMediaMid").ifEmpty { song.text("media_mid").ifEmpty { song.obj("file")?.text("media_mid").orEmpty().ifEmpty { mid } } }, album,
         ).apply {
             artistIds = song.getAsJsonArray("singer")?.map { if (it.isJsonObject) it.asJsonObject.text("mid") else "" } ?: emptyList()
+            sourceSongId = song.number("songid").takeIf { it > 0 } ?: song.number("id").takeIf { it > 0 } ?: 0L
         }
     }
 

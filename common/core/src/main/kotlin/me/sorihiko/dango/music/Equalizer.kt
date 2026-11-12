@@ -107,10 +107,21 @@ class Equalizer(private val channels: Int, private val rate: Int) {
                 pcm[idx] = limit(x)
             }
         }
+        // 算出了 NaN / 无穷：滤波器状态清零，不然会一直没声
+        if (broken) {
+            broken = false
+            for (st in state) java.util.Arrays.fill(st, 0f)
+        }
     }
+
+    private var broken = false
 
     /** 软限幅：26000 以下原样，以上用 tanh 压进剩下的余量里 */
     private fun limit(x: Float): Short {
+        if (!x.isFinite()) {
+            broken = true
+            return 0
+        }
         val knee = 26000f
         val ax = abs(x)
         if (ax <= knee) return x.toInt().toShort()

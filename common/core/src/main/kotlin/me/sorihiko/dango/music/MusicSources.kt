@@ -32,6 +32,21 @@ interface MusicSourceApi {
     fun artistAlbums(id: String): List<NeteasePlaylist> = emptyList()
     /** 按名字找歌手 ID，找不到返回 "" */
     fun findArtist(name: String): String = ""
+
+    /** 有没有红心（"我喜欢"）：登录了才有 */
+    val canLike: Boolean get() = false
+    /** 这首是不是红心（会联网，在后台调） */
+    fun likedState(track: NeteaseTrack): Boolean = false
+    /** 加 / 取消红心；失败抛 [SourceAccessException] */
+    fun setLiked(track: NeteaseTrack, like: Boolean): Unit = throw SourceAccessException("This source has no liked songs.")
+
+    /** 现在能不能往自建歌单里加歌（登录了才行） */
+    val canAddToPlaylist: Boolean get() = false
+    /** 自己建的、能往里加歌的歌单；不含"我喜欢"（那个用红心） */
+    fun editablePlaylists(): List<NeteasePlaylist> = emptyList()
+    /** 把 [track] 加进 [playlist]：true = 加上了，false = 本来就在里面。失败抛 [SourceAccessException] */
+    fun addToPlaylist(playlist: NeteasePlaylist, track: NeteaseTrack): Boolean =
+        throw SourceAccessException("This source cannot add songs to playlists.")
 }
 
 object MusicSources {
@@ -66,6 +81,15 @@ object MusicSources {
         override fun artist(id: String) = id.toLongOrNull()?.let { NeteaseApi.artist(it) }
         override fun artistAlbums(id: String) = id.toLongOrNull()?.let { NeteaseApi.artistAlbums(it) } ?: emptyList()
         override fun findArtist(name: String) = NeteaseApi.findArtist(name).takeIf { it > 0 }?.toString().orEmpty()
+        override val canLike get() = NeteaseApi.loggedIn
+        override fun likedState(track: NeteaseTrack): Boolean { NeteaseApi.loadLiked(); return NeteaseApi.isLiked(track.id) }
+        override fun setLiked(track: NeteaseTrack, like: Boolean) {
+            if (!NeteaseApi.setLiked(track.id, like))
+                throw SourceAccessException(if (like) "Could not add to Liked songs. Please retry." else "Could not remove from Liked songs. Please retry.")
+        }
+        override val canAddToPlaylist get() = NeteaseApi.loggedIn
+        override fun editablePlaylists() = NeteaseApi.editablePlaylists()
+        override fun addToPlaylist(playlist: NeteasePlaylist, track: NeteaseTrack) = NeteaseApi.addToPlaylist(playlist.id, track.id)
     }
 
     fun api(source: MusicSource = selected): MusicSourceApi = when (source) {

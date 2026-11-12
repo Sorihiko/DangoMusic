@@ -1,5 +1,6 @@
 package me.sorihiko.dango.music
 
+import me.sorihiko.dango.DangoLogger
 import me.sorihiko.dango.platform.ListenerEnvironment
 import kotlin.math.PI
 import kotlin.math.cos
@@ -49,11 +50,12 @@ object EnvironmentAudio {
             targetGain = 1f
             return
         }
-        val s = strength.coerceIn(0f, 1f)
+        // 参数里混进 NaN 会把整条混响链带成 NaN，写回时变成 0 = 一直没声（#65）：不正常的数一律不用
+        val s = if (strength.isFinite()) strength.coerceIn(0f, 1f) else 1f
         var cutoff = OPEN_CUTOFF
         var wet = 0f
         var gain = 1f
-        if (room != null) {
+        if (room != null && room.finite) {
             val enclosed = room.enclosure
             // 越封闭、混响越长，回声越明显；空旷的地方基本是干声
             wet = MAX_WET * enclosed.pow(1.5f) * (room.decaySeconds / 0.5f).coerceAtMost(1f)
@@ -75,7 +77,7 @@ object EnvironmentAudio {
             gain *= 0.85f
             targetDamping = 0.85f
         }
-        if (rain) gain *= 1f - 0.2f * env.rain
+        if (rain && env.rain.isFinite()) gain *= 1f - 0.2f * env.rain.coerceIn(0f, 1f)
         // 强度：在"原样"和"满效果"之间插（截止频率按对数插，听起来才均匀）
         targetCutoff = exp(ln(OPEN_CUTOFF) + (ln(cutoff) - ln(OPEN_CUTOFF)) * s)
         targetWet = wet * s
@@ -112,11 +114,7 @@ object EnvironmentAudio {
 
     /** 新的一首 / 拖了进度：清掉滤波器和混响里残留的声音 */
     fun reset() {
-        x1.fill(0f); x2.fill(0f); y1.fill(0f); y2.fill(0f)
-        delay.fill(0f)
-        for (side in combs) for (c in side) c.fill(0f)
-        for (side in allpasses) for (a in side) a.fill(0f)
-        for (s in combStore) s.fill(0f)
+        clearState()
         cutoff = targetCutoff
         wet = targetWet
         decay = targetDecay
@@ -129,6 +127,7 @@ object EnvironmentAudio {
 
     /** 处理一帧（交错存放的 16 位样本，[length] 是样本总数），原地修改 */
     fun process(pcm: ShortArray, length: Int, channels: Int, sampleRate: Int, frameMs: Float) {
+        if (!paramsFinite()) restoreParams()
         val k = 1f - exp(-frameMs / SMOOTH_MS)
         cutoff = exp(ln(cutoff) + (ln(targetCutoff) - ln(cutoff)) * k)
         wet += (targetWet - wet) * k
@@ -185,6 +184,43 @@ object EnvironmentAudio {
             }
             i += ch
         }
+        // 这一帧算出了 NaN / 无穷：滤波器和混响里的状态已经坏了，清空（丢一下回声），下一帧接着正常放
+        if (broken) {
+            broken = false
+            clearState()
+            val now = System.currentTimeMillis()
+            if (now - brokenLoggedAt > 10_000L) {
+                brokenLoggedAt = now
+                DangoLogger.warn("Environment audio: non-finite sample, reverb state cleared")
+            }
+        }
+    }
+
+    /** [limit] 遇到 NaN / 无穷时记下，这一帧处理完清空状态 */
+    private var broken = false
+    private var brokenLoggedAt = 0L
+
+    private fun paramsFinite() = cutoff.isFinite() && cutoff > 0f && wet.isFinite() && decay.isFinite() && early.isFinite() &&
+        damping.isFinite() && pan.isFinite() && gain.isFinite() &&
+        targetCutoff.isFinite() && targetCutoff > 0f && targetWet.isFinite() && targetDecay.isFinite() && targetEarly.isFinite() &&
+        targetDamping.isFinite() && targetPan.isFinite() && targetGain.isFinite()
+
+    /** 参数坏了：回到"不加效果"，等下一次 update 给新的 */
+    private fun restoreParams() {
+        targetCutoff = OPEN_CUTOFF; targetWet = 0f; targetGain = 1f
+        targetDecay = 0.5f; targetEarly = 10f; targetDamping = 0.3f; targetPan = 0f
+        cutoff = OPEN_CUTOFF; wet = 0f; gain = 1f; decay = 0.5f; early = 10f; damping = 0.3f; pan = 0f
+        coefCutoff = -1f
+        clearState()
+    }
+
+    /** 只清滤波器和混响里的声音，参数不动 */
+    private fun clearState() {
+        x1.fill(0f); x2.fill(0f); y1.fill(0f); y2.fill(0f)
+        delay.fill(0f)
+        for (side in combs) for (c in side) c.fill(0f)
+        for (side in allpasses) for (a in side) a.fill(0f)
+        for (st in combStore) st.fill(0f)
     }
 
     /**
@@ -193,6 +229,10 @@ object EnvironmentAudio {
      * 低于 [LIMIT_KNEE] 原样不动，超出的部分平滑压进剩下的余量里，永远到不了满幅。
      */
     private fun limit(x: Float): Short {
+        if (!x.isFinite()) {
+            broken = true
+            return 0
+        }
         val a = kotlin.math.abs(x)
         if (a <= LIMIT_KNEE) return x.toInt().toShort()
         val room = 32767f - LIMIT_KNEE

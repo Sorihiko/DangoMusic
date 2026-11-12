@@ -7,6 +7,7 @@ import me.sorihiko.dango.music.CoverCache
 import me.sorihiko.dango.music.MusicPlayer
 import me.sorihiko.dango.music.MusicScreen
 import me.sorihiko.dango.music.MusicSource
+import me.sorihiko.dango.music.MusicSources
 import me.sorihiko.dango.music.NeteaseApi
 import me.sorihiko.dango.ui.LayoutBounds
 import me.sorihiko.dango.ui.ShadowStyle
@@ -21,10 +22,12 @@ import kotlin.math.max
 internal class PlayerBar(private val screen: MusicScreen, private val module: NeteaseMusicModule) {
     private val ui = screen.ui
     /** 变速变调、均衡器的按钮和面板（同时只开一个） */
-    val tune = TunePanel(ui).also { t -> t.onOpen = { eq.open = false } }
-    val eq: EqPanel = EqPanel(ui).also { e -> e.onOpen = { tune.open = false } }
+    val tune = TunePanel(ui).also { t -> t.onOpen = { eq.open = false; add.open = false } }
+    val eq: EqPanel = EqPanel(ui).also { e -> e.onOpen = { tune.open = false; add.open = false } }
+    /** 红心旁边的"+"：加到自建歌单 */
+    val add: AddPanel = AddPanel(ui).also { a -> a.onOpen = { tune.open = false; eq.open = false } }
     /** 开着的那个面板（没开是空的）：画下面的内容时鼠标在这里不算悬停 */
-    val popupRect: LayoutBounds get() = if (eq.panelRect.width > 0f) eq.panelRect else tune.panelRect
+    val popupRect: LayoutBounds get() = listOf(eq.panelRect, tune.panelRect, add.panelRect).firstOrNull { it.width > 0f } ?: LayoutBounds()
 
     private var lastSubtitle = ""
     private var subtitleAt = 0L
@@ -49,6 +52,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
     private val queueA = Anim()
     private val shuffleA = Anim()
     private val repeatA = Anim()
+    private val modeA = Anim()
     private val likeA = Anim()
     /** 播放 ↔ 暂停图标的过渡 */
     private val playMorph = Spring(320f, 26f)
@@ -70,9 +74,17 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         ctx.drawShape(coverBox, ShapeStyle(Color.TRANSPARENT, 13f, 1f, Color(1f, 1f, 1f, 0.10f)))
         val infoX = coverBox.right + 12f
         // 窗口窄时歌名区跟着缩短，别压到中间的按钮上（红心也要留位置）
-        val likeShown = t != null && !MusicPlayer.external && t.source == MusicSource.NETEASE && NeteaseApi.loggedIn
-        val leftLimit = bar.x + bar.width / 2f - 96f
-        val infoW = (leftLimit - infoX - (if (likeShown) 44f else 8f)).coerceIn(40f, 220f)
+        // 左边界：播放模式按钮（中间那组最左边）再留一点空
+        val leftLimit = bar.x + bar.width / 2f - 136f
+        // 歌名后面的小按钮：网易云红心、加到歌单的 +；放不下（窗口太窄）就不显示，免得压到播放模式按钮
+        val likeWanted = t != null && !MusicPlayer.external && MusicSources.api(t.source).canLike
+        val addWanted = add.available(t)
+        val room = leftLimit - infoX - 40f - 12f
+        val likeShown = likeWanted && room >= 32f
+        val addShown = addWanted && room >= (if (likeShown) 64f else 32f)
+        if (!addShown) add.open = false
+        val extras = (if (likeShown) 32f else 0f) + (if (addShown) 32f else 0f)
+        val infoW = (leftLimit - infoX - extras - (if (extras > 0f) 12f else 8f)).coerceIn(40f, 220f)
         val title = t?.name ?: I18n.text("Not playing")
         ui.text(ui.trim(title, infoW, 13f, Theme.FONT_SEMIBOLD), infoX, coverBox.y + 9f, 13f, Theme.TEXT_PRIMARY, Theme.FONT_SEMIBOLD)
         val sub = when {
@@ -123,12 +135,17 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
 
         // 网易云：红心（登录了才有）
         if (t != null && likeShown) {
-            Library.ensureLiked()
+            Library.ensureLiked(t)
             val likeB = LayoutBounds(infoX + infoW + 8f, coverBox.y + cs / 2f - 14f, 28f, 28f)
             val k = button(likeB, likeA)
-            val on = likeA.on.tick(if (NeteaseApi.isLiked(t.id)) 1f else 0f).coerceIn(0f, 1f)
+            val on = likeA.on.tick(if (Library.isLiked(t)) 1f else 0f).coerceIn(0f, 1f)
             ui.icon("♥", likeB.x + 14f, likeB.y + 14f, 15f * k, mixColor(Theme.TEXT_SECONDARY, RED, on))
             ui.hits += likeB to { likeA.press.v -= 7f; Library.toggleLike(t) }
+        }
+        // 加到歌单（红心右边；没有红心就在红心的位置）
+        if (t != null && addShown) {
+            val ax = infoX + infoW + 8f + (if (likeShown) 32f else 0f)
+            add.drawButton(LayoutBounds(ax, coverBox.y + cs / 2f - 14f, 28f, 28f), t)
         }
 
         // 中：上一首 / 播放 / 下一首 / 队列。点击区域固定，动画只改画出来的样子
@@ -138,6 +155,9 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
         val prevB = LayoutBounds(cx - 62f - 16f, cy - 16f, 32f, 32f)
         val nextB = LayoutBounds(cx + 62f - 16f, cy - 16f, 32f, 32f)
         val queueB = LayoutBounds(cx + 112f - 16f, cy - 16f, 32f, 32f)
+        // 播放模式（顺序 / 随机 / 单曲循环）：和右边的队列按钮对称
+        val modeB = LayoutBounds(cx - 112f - 16f, cy - 16f, 32f, 32f)
+        drawModeButton(modeB, cy)
         val kPrev = button(prevB, prevA)
         val kPlay = drawPlayDisc(playB)
         val kNext = button(nextB, nextA)
@@ -196,35 +216,57 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
             }
         }
 
-        // 右：单曲循环 / 随机 + 音量
+        // 右：均衡器、变速变调 + 音量
         val vy = ry
-        // 窗口窄时先缩短音量条，再藏掉单曲循环 / 随机（右边从队列按钮之后到栏的右边）
-        // 右边喇叭图标的右边缘对齐进度条的右端
+        // 右边喇叭图标的右边缘对齐进度条的右端；窗口窄时先缩短音量条，再窄就不画音量条（按钮不和队列按钮挤在一起）
         val rightEdge = bar.right - PROGRESS_INSET - 14f
         val rightSpace = rightEdge - (cx + 112f + 28f)
-        val showToggles = rightSpace >= 310f
-        val volW = (rightSpace - 46f - 80f - (if (showToggles) 84f else 0f)).coerceIn(48f, 110f)
-        volRect = LayoutBounds(rightEdge - volW, vy - 2f, volW, 4f)
-        speaker(volRect.x - 22f, vy, false)
-        speaker(volRect.right + 9f, vy, true)
-        ui.card(volRect, Theme.TRACK, 2f)
-        ui.card(LayoutBounds(volRect.x, volRect.y, max(4f, volRect.width * MusicPlayer.volume), volRect.height), RED, 2f)
-        val knobX = volRect.x + volRect.width * MusicPlayer.volume
-        ctx.drawShape(LayoutBounds(knobX - 5f, volRect.y - 3f, 10f, 10f), ShapeStyle(Theme.TEXT_PRIMARY, 5f))
-
-        if (showToggles) {
-            val shB = LayoutBounds(volRect.x - 72f, vy - 14f, 32f, 28f)
-            toggleButton(shB, vy, MusicPlayer.shuffle, shuffleA, "⇄") { module.toggleShuffle() }
-            val repeatB = LayoutBounds(shB.x - 40f, vy - 14f, 32f, 28f)
-            toggleButton(repeatB, vy, MusicPlayer.repeatOne, repeatA, "↻") { module.toggleRepeatOne() }
+        val buttons = BTN_STEP * 2
+        val showVolume = rightSpace >= VOL_GAP + buttons + VOL_MIN
+        var tuneX: Float
+        if (showVolume) {
+            val volW = (rightSpace - VOL_GAP - buttons).coerceIn(VOL_MIN, 110f)
+            volRect = LayoutBounds(rightEdge - volW, vy - 2f, volW, 4f)
+            speaker(volRect.x - 22f, vy, false)
+            speaker(volRect.right + 9f, vy, true)
+            ui.card(volRect, Theme.TRACK, 2f)
+            ui.card(LayoutBounds(volRect.x, volRect.y, max(4f, volRect.width * MusicPlayer.volume), volRect.height), RED, 2f)
+            val knobX = volRect.x + volRect.width * MusicPlayer.volume
+            ctx.drawShape(LayoutBounds(knobX - 5f, volRect.y - 3f, 10f, 10f), ShapeStyle(Theme.TEXT_PRIMARY, 5f))
+            tuneX = volRect.x - VOL_GAP - BTN_STEP + 4f
+        } else {
+            volRect = LayoutBounds()
+            tuneX = rightEdge + 14f - 32f
         }
-        // 变速变调：在随机 / 单曲循环左边；窗口窄、那两个藏起来时紧挨着音量
-        val tuneX = if (showToggles) volRect.x - 152f else volRect.x - 72f
+        // 变速变调紧挨着音量，均衡器再往左一个
         tune.drawButton(LayoutBounds(tuneX, vy - 14f, 32f, 28f), vy)
         // 均衡器：再往左一个
-        eq.drawButton(LayoutBounds(tuneX - 40f, vy - 14f, 32f, 28f), vy)
+        eq.drawButton(LayoutBounds(tuneX - BTN_STEP, vy - 14f, 32f, 28f), vy)
         tune.drawPanel(bar)
         eq.drawPanel(bar)
+        add.drawPanel(bar)
+    }
+
+    /** 播放模式按钮：顺序（→）/ 随机（⇄）/ 单曲循环（↻ 加一个小 1）；不是顺序时图标是红色 */
+    private fun drawModeButton(b: LayoutBounds, cy: Float) {
+        val k = button(b, modeA)
+        val shuffle = MusicPlayer.shuffle
+        val one = MusicPlayer.repeatOne
+        val o = modeA.on.tick(if (shuffle || one) 1f else 0f).coerceIn(0f, 1f)
+        val c = mixColor(Theme.TEXT_PRIMARY, RED, o)
+        val mx = b.x + b.width / 2f
+        when {
+            one -> {
+                ui.icon("↻", mx, cy, 15f * k, c)
+                ui.text("1", mx - ui.width("1", 7f, Theme.FONT_SEMIBOLD) / 2f, cy - 7f * 0.39f - 0.5f, 7f, c, Theme.FONT_SEMIBOLD)
+            }
+            shuffle -> ui.icon("⇄", mx, cy, 14f * k, c)
+            else -> ui.icon("→", mx, cy, 14f * k, c)
+        }
+        ui.hits += b to {
+            modeA.press.v -= 7f
+            Library.showTemporaryStatus(I18n.text(module.cyclePlayMode()), 1_500L)
+        }
     }
 
     /**
@@ -296,6 +338,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
     fun mouseDown(mx: Int, my: Int): Boolean {
         if (tune.mouseDown(mx, my)) return true
         if (eq.mouseDown(mx, my)) return true
+        if (add.mouseDown(mx, my)) return true
         if (progRect.expand(0f, 6f).contains(mx, my)) {
             if (MusicPlayer.shownDurationMs > 0) {
                 seeking = true
@@ -303,7 +346,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
             }
             return true
         }
-        if (volRect.expand(6f, 8f).contains(mx, my)) {
+        if (volRect.width > 0f && volRect.expand(6f, 8f).contains(mx, my)) {
             setVolumeAt(mx)
             return true
         }
@@ -324,7 +367,7 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
             seekFraction = fractionAt(mx)
             return
         }
-        if (volRect.expand(12f, 12f).contains(mx, my)) setVolumeAt(mx)
+        if (volRect.width > 0f && volRect.expand(12f, 12f).contains(mx, my)) setVolumeAt(mx)
     }
 
     /** 松开鼠标：拖进度条的话现在才跳过去 */
@@ -351,5 +394,11 @@ internal class PlayerBar(private val screen: MusicScreen, private val module: Ne
 
 /** 播放栏的玻璃：用侧栏那一套，圆角放大、阴影比侧栏淡一点 */
 private val BAR_GLASS = Theme.GLASS_SIDEBAR.copy(radius = 28f, shadow = ShadowStyle(Color(0f, 0f, 0f, 0.10f), 14f, Vec2(0f, -3f)))
+/** 右边小按钮的间隔（按钮 32 宽） */
+private const val BTN_STEP = 36f
+/** 最靠右的按钮和音量条之间：留给左边的小喇叭 */
+private const val VOL_GAP = 32f
+/** 音量条最短 */
+private const val VOL_MIN = 40f
 /** 进度条离播放栏左右两边的距离 */
 private const val PROGRESS_INSET = 72f

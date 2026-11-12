@@ -456,3 +456,22 @@ Classical	古典
 Loudness	响度
 V-Shape	V 形
 Night	夜间
+Play in order	顺序播放
+Add to playlist	加到歌单
+Loading playlists…	正在读取歌单…
+No playlists of your own yet	还没有自己建的歌单
+Added to %s	已添加到 %s
+Already in %s	已经在 %s 里了
+This source cannot add songs to playlists.	这个音源不能往歌单里加歌。
+Log in to NetEase Cloud Music first.	请先登录网易云音乐。
+NetEase Cloud Music did not respond. Please retry.	网易云音乐没有响应，请重试。
+NetEase Cloud Music returned an incomplete response. Please retry.	网易云音乐返回的数据不完整，请重试。
+NetEase Cloud Music could not add the song. Please retry.	网易云音乐没能加上这首歌，请重试。
+Log in to QQ Music first.	请先登录 QQ 音乐。
+Please reopen the playlist list and try again.	请重新打开歌单列表再试。
+QQ Music could not find this song. Please retry.	QQ 音乐找不到这首歌，请重试。
+This song is not from QQ Music.	这首歌不是 QQ 音乐的。
+Log in to Kugou first.	请先登录酷狗。
+This song is not from Kugou.	这首歌不是酷狗的。
+This source has no liked songs.	这个音源没有红心。
+Kugou liked songs are unavailable. Please retry.	读不到酷狗的“我喜欢”，请重试。

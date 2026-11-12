@@ -147,6 +147,42 @@ object NeteaseApi {
         }
     }
 
+    /** 自己建的歌单，去掉"我喜欢的音乐"（specialType 5，用红心加） */
+    fun editablePlaylists(): List<NeteasePlaylist> {
+        val uid = resolveUser()
+        if (uid == 0L) return emptyList()
+        val o = getJson("https://music.163.com/api/user/playlist/?uid=$uid&limit=1000&offset=0") ?: return emptyList()
+        val arr = o.getAsJsonArray("playlist") ?: return emptyList()
+        return arr.mapNotNull { el ->
+            val p = el.takeIf { it.isJsonObject }?.asJsonObject ?: return@mapNotNull null
+            val creator = p.get("creator") as? JsonObject
+            if (creator?.get("userId")?.asLong != uid || p.get("specialType")?.asInt == 5) return@mapNotNull null
+            NeteasePlaylist(p.get("id")?.asLong ?: return@mapNotNull null, p.get("name")?.asString ?: "",
+                p.get("trackCount")?.asInt ?: 0, p.get("coverImgUrl")?.asString ?: "", true)
+        }
+    }
+
+    /** 往自己的歌单里加一首：true = 加上了，false = 本来就在里面（网易云回 502） */
+    fun addToPlaylist(playlistId: Long, trackId: Long): Boolean {
+        if (!loggedIn) throw SourceAccessException("Log in to NetEase Cloud Music first.")
+        val body = JsonObject().apply {
+            addProperty("op", "add"); addProperty("pid", playlistId.toString())
+            addProperty("trackIds", "[$trackId]"); addProperty("imme", "true"); addProperty("csrf_token", csrf())
+        }
+        val res = NeteaseLogin.weapi("https://music.163.com/weapi/playlist/manipulate/tracks", body.toString(), cookieHeader())
+            ?: throw SourceAccessException("NetEase Cloud Music did not respond. Please retry.")
+        val root = JsonParser().parse(res.first)
+        val o = if (root.isJsonObject) root.asJsonObject else throw SourceAccessException("NetEase Cloud Music returned an incomplete response. Please retry.")
+        return when (o.get("code")?.takeIf { it.isJsonPrimitive }?.asInt) {
+            200 -> true
+            502 -> false
+            else -> {
+                DangoLogger.warn("NetEase playlist add failed: code {}", codeOf(o))
+                throw SourceAccessException("NetEase Cloud Music could not add the song. Please retry.")
+            }
+        }
+    }
+
     /** 歌单里的全部歌曲：详情接口给出全部 ID，前一部分直接带歌曲信息，剩下的分批补齐 */
     fun playlistTracks(playlistId: Long): List<NeteaseTrack> {
         // 详情只要前 200 首的完整信息：回包小、来得快，界面能马上先显示；剩下的按 ID 分批补

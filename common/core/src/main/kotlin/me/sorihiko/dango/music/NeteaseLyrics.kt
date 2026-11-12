@@ -43,9 +43,11 @@ internal class NeteaseLyrics @JvmOverloads constructor(
         }
         val translated = text(data.get("tlyric"))?.let { LyricsProvider.parseLrc(it) } ?: emptyList()
         val candidates = listOf(data.get("yrc"), data.get("lrc"), data.get("lyric"), root.get("lrc"), root.get("lyric"))
+        // 逐字歌词后半截跑偏时拿普通 LRC 修（见 LyricsProvider.repairYrc）
+        val lrc by lazy { candidates.drop(1).firstNotNullOfOrNull { text(it) }?.let { LyricsProvider.parseLrc(it) } ?: emptyList() }
         for ((index, value) in candidates.withIndex()) {
             val raw = text(value) ?: continue
-            val lines = if (index == 0) LyricsProvider.parseYrc(raw) else LyricsProvider.parseLrc(raw)
+            val lines = if (index == 0) LyricsProvider.repairYrc(LyricsProvider.parseYrc(raw), lrc) else LyricsProvider.parseLrc(raw)
             val result = Lyrics(LyricsProvider.withTranslation(lines, translated), "NetEase")
             if (result.lines.isNotEmpty()) {
                 DangoLogger.info("NetEase lyric stage=cloud usable=true")

@@ -32,7 +32,10 @@ object RoomAcoustics {
         val absorption: Float,
         /** 回声偏哪边：-1 左，1 右 */
         val pan: Float,
-    )
+    ) {
+        /** 全是正常的数（不是 NaN / 无穷） */
+        val finite: Boolean get() = enclosure.isFinite() && decaySeconds.isFinite() && earlyDelayMs.isFinite() && absorption.isFinite() && pan.isFinite()
+    }
 
     @Volatile var room: Room? = null
         private set
@@ -71,8 +74,10 @@ object RoomAcoustics {
         if (tick++ % INTERVAL != 0) return
         val pose = platform.player ?: run { room = null; smoothed = null; return }
         val measured = try { measure(platform, pose.eyeX, pose.eyeY, pose.eyeZ, pose.yaw) } catch (_: Exception) { null } ?: return
+        // 算出非有限值（NaN / 无穷）的这次不要；平均是 a + (b - a) / 2，混进一个 NaN 就再也出不来了（#65）
+        if (!measured.finite) return
         // 每次射线方向随机转一点，结果会抖：和上一次的平均一下
-        val last = smoothed
+        val last = smoothed?.takeIf { it.finite }
         val next = if (last == null) measured else Room(
             mix(last.enclosure, measured.enclosure), mix(last.decaySeconds, measured.decaySeconds),
             mix(last.earlyDelayMs, measured.earlyDelayMs), mix(last.absorption, measured.absorption), mix(last.pan, measured.pan))
@@ -167,6 +172,8 @@ object RoomAcoustics {
         if (n[axis] * dir[axis] < 0) n[axis] = -n[axis]
         x = n[0]; y = n[1]; z = n[2]
         val len = sqrt(x * x + y * y + z * z)
+        // 散开后长度几乎是 0（极少见）：就用镜面反射的方向，不然除出来是 NaN
+        if (!(len > 1e-9)) return
         dir[0] = x / len; dir[1] = y / len; dir[2] = z / len
     }
 

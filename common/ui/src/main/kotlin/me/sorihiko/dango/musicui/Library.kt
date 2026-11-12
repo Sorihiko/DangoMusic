@@ -135,8 +135,9 @@ internal object Library {
             publish(request) { charts = if (error.isEmpty()) result else null; chartsLoading = false; if (error.isNotEmpty()) status = error }
         }
     }
-    @Synchronized fun loadTracks(playlistId: Long) {
-        if ((tracksCache.containsKey(playlistId) && !tracksFailed.remove(playlistId)) || !tracksLoading.add(playlistId)) return
+    /** [refresh] = 已经有缓存也在后台重拉一次（先照旧显示缓存，拉到了再换） */
+    @Synchronized fun loadTracks(playlistId: Long, refresh: Boolean = false) {
+        if ((!refresh && tracksCache.containsKey(playlistId) && !tracksFailed.remove(playlistId)) || !tracksLoading.add(playlistId)) return
         val request = request()
         worker.execute {
             var error = ""
@@ -154,6 +155,16 @@ internal object Library {
             }
         }
     }
+    /**
+     * 这些歌单的内容在别处变了（点了红心、加了歌）：缓存作废，下次打开重拉；
+     * 正开着的那个马上在后台重拉（旧的先留着显示）
+     */
+    fun invalidateTracks(ids: Collection<Long>) {
+        val opened = ScreenState.opened?.id
+        for (id in ids) if (id != opened) tracksCache.remove(id)
+        if (opened != null && opened in ids) loadTracks(opened, refresh = true)
+    }
+
     /** 换上更新（更长）的歌曲列表；如果正在放的就是旧列表，队列也一起换成新的 */
     private fun replaceTracks(playlistId: Long, tracks: List<NeteaseTrack>) {
         val old = tracksCache[playlistId]
@@ -225,23 +236,90 @@ internal object Library {
     @Volatile var liking = false
         private set
 
-    fun ensureLiked() {
+    /** 各音源的红心状态（按歌的 key 记）；查过的 30 秒内不重查 */
+    private val likedState = ConcurrentHashMap<String, Boolean>()
+    private val likedCheckAt = ConcurrentHashMap<String, Long>()
+
+    fun isLiked(track: NeteaseTrack): Boolean = likedState[track.key] ?: false
+
+    fun ensureLiked(track: NeteaseTrack) {
         val now = System.currentTimeMillis()
-        if (now - likedCheckedAt < 30_000L || !NeteaseApi.loggedIn) return
-        likedCheckedAt = now
-        worker.execute { try { NeteaseApi.loadLiked() } catch (_: Exception) { } }
+        if (now - (likedCheckAt[track.key] ?: 0L) < 30_000L) return
+        val api = MusicSources.api(track.source)
+        if (!api.canLike) return
+        likedCheckAt[track.key] = now
+        worker.execute { try { likedState[track.key] = api.likedState(track) } catch (_: Exception) { } }
     }
 
+    /** 先在界面上切过去，失败了再切回来 */
     fun toggleLike(track: NeteaseTrack) {
-        if (liking || track.source != MusicSource.NETEASE) return
+        val api = MusicSources.api(track.source)
+        if (liking || !api.canLike) return
         liking = true
-        val like = !NeteaseApi.isLiked(track.id)
+        val like = !isLiked(track)
+        likedState[track.key] = like
+        likedCheckAt[track.key] = System.currentTimeMillis()
         worker.execute {
-            val ok = try { NeteaseApi.setLiked(track.id, like) } catch (_: Exception) { false }
-            liking = false
-            if (!ok) status = if (like) "Could not add to Liked songs. Please retry." else "Could not remove from Liked songs. Please retry."
+            try {
+                api.setLiked(track, like)
+                // "我喜欢"也是个自建歌单：自己的歌单缓存都作废（哪个是"我喜欢"各音源不一样）
+                if (track.source == source) invalidateTracks(playlists.filter { it.owned }.map { it.id })
+            } catch (e: Exception) {
+                likedState[track.key] = !like
+                status = if (e is SourceAccessException) e.message.orEmpty()
+                    else if (like) "Could not add to Liked songs. Please retry." else "Could not remove from Liked songs. Please retry."
+            } finally {
+                liking = false
+            }
         }
     }
+    // ---------------------------------------------------------------- 加到歌单（播放栏上的 +）
+
+    /** 当前音源能加歌的自建歌单；null = 还没拉到 */
+    @Volatile var addTargets: List<NeteasePlaylist>? = null
+        private set
+    @Volatile var addTargetsSource: MusicSource? = null
+        private set
+    @Volatile var addTargetsLoading = false
+        private set
+    @Volatile var adding = false
+        private set
+
+    /** 打开 + 面板时拉一次（换了音源先清掉旧的） */
+    fun loadAddTargets(source: MusicSource) {
+        if (addTargetsSource != source) { addTargets = null; addTargetsSource = source }
+        if (addTargetsLoading) return
+        addTargetsLoading = true
+        worker.execute {
+            try {
+                val list = MusicSources.api(source).editablePlaylists()
+                if (addTargetsSource == source) addTargets = list
+            } catch (e: Exception) {
+                if (addTargetsSource == source && addTargets == null) addTargets = emptyList()
+                showTemporaryStatus(publicError(e), 4_000L)
+            } finally {
+                addTargetsLoading = false
+            }
+        }
+    }
+
+    /** 加进去之后，这个歌单缓存的歌曲列表作废（下次打开重新拉，能看到新加的） */
+    fun addToPlaylist(playlist: NeteasePlaylist, track: NeteaseTrack) {
+        if (adding) return
+        adding = true
+        worker.execute {
+            try {
+                val added = MusicSources.api(track.source).addToPlaylist(playlist, track)
+                showTemporaryStatus(me.sorihiko.dango.i18n.I18n.format(if (added) "Added to %s" else "Already in %s", playlist.name), 3_000L)
+                if (added) invalidateTracks(listOf(playlist.id))
+            } catch (e: Exception) {
+                showTemporaryStatus(publicError(e), 4_000L)
+            } finally {
+                adding = false
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- 歌手（各音源的歌手页）
 
     /** 缓存的键：音源 + 歌手 ID */

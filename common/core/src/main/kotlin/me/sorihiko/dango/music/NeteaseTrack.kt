@@ -21,6 +21,8 @@ class NeteaseTrack @JvmOverloads constructor(
     var cloud: Boolean = false
     /** 当前账号云盘上传的标识；可能与 simpleSong 的曲库标识不同。 */
     var cloudId: Long = 0
+    /** 音源自己的数字歌曲 ID（QQ 音乐往歌单里加歌要用；拿不到是 0） */
+    var sourceSongId: Long = 0
     /** 歌手 ID（音源自己的，QQ 是 mid），和 [artists] 一一对应；拿不到的是 ""，点进歌手页时再按名字找 */
     var artistIds: List<String> = emptyList()
     val key: String get() = "${source.key}:$nativeId" + if (source == MusicSource.KUGOU && cloud) ":cloud" else ""

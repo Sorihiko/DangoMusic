@@ -200,6 +200,20 @@ class NeteaseMusicModule : Module() {
         MusicPlayer.repeatOne = repeatOne.get()
     }
 
+    /** 播放栏左边的播放模式按钮：顺序 → 随机 → 单曲循环 → 顺序。返回切到的模式名（界面提示用） */
+    fun cyclePlayMode(): String {
+        val next = when {
+            repeatOne.get() -> "Play in order"
+            shuffle.get() -> "Repeat one"
+            else -> "Shuffle"
+        }
+        shuffle.set(next == "Shuffle")
+        repeatOne.set(next == "Repeat one")
+        MusicPlayer.shuffle = shuffle.get()
+        MusicPlayer.repeatOne = repeatOne.get()
+        return next
+    }
+
     /** 播放器界面里按键时调用：是某个快捷键就执行并返回 true */
     fun handleHotkey(keyCode: Int): Boolean {
         if (allowedPlayerKey(keyCode) == Keys.NONE) return false

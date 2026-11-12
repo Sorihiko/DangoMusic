@@ -12,7 +12,8 @@ internal class KugouCatalog(
             ?.let { String(it,Charsets.UTF_8) } ?: throw SourceAccessException("Kugou recommendations are unavailable. Please retry.")
     },
 ) {
-    private class Ref(val kind: String, val native: Long, val owner: String = "")
+    /** [editable] = 自己建的普通歌单（不是"我喜欢"，也不是收藏别人的），能往里加歌 */
+    private class Ref(val kind: String, val native: Long, val owner: String = "", val editable: Boolean = false, val liked: Boolean = false)
     private val refs = ConcurrentHashMap<Long, Ref>()
     private val recommendations = ConcurrentHashMap<Long,List<NeteaseTrack>>()
 
@@ -32,8 +33,9 @@ internal class KugouCatalog(
                 if (row.number("is_del") == 1L) continue
                 val local = row.number("listid").takeIf { it > 0 } ?: continue
                 val id = MusicSources.stableId(MusicSource.KUGOU,"user:${account.userId}:$local")
-                refs[id] = Ref("personal",local,account.userId)
-                if (row.number("is_def") == 2L) liked += id
+                val isLiked = row.number("is_def") == 2L
+                refs[id] = Ref("personal",local,account.userId, row.number("type") == 0L && !isLiked, isLiked)
+                if (isLiked) liked += id
                 val entry = NeteasePlaylist(id,cleanSourceText(row.text("name")),row.number("count").toInt(),
                     image(row.text("pic")), row.number("type") == 0L)
                 if (output.put(id,entry) == null) added++
@@ -44,6 +46,106 @@ internal class KugouCatalog(
             if (added == 0) throw SourceAccessException("Kugou repeated a library page. Please retry.")
         }
         throw SourceAccessException("Kugou returned too many library pages. Please retry.")
+    }
+
+    /** 自己建的歌单（不含"我喜欢"） */
+    fun editable(): List<NeteasePlaylist> = playlists().filter { refs[it.id]?.editable == true }
+
+    /** 往自建歌单里加一首（云歌单接口）；酷狗不告诉我们是不是本来就在里面，成功就当加上了 */
+    fun add(playlist: NeteasePlaylist, track: NeteaseTrack): Boolean {
+        val account = NativeAccounts.get(MusicSource.KUGOU) ?: throw SourceAccessException("Log in to Kugou first.")
+        val ref = refs[playlist.id]?.takeIf { it.editable && it.owner == account.userId }
+            ?: throw SourceAccessException("Please reopen the playlist list and try again.")
+        addSong(account, ref.native, track)
+        return true
+    }
+
+    private fun addSong(account: NativeAccount, listid: Long, track: NeteaseTrack) {
+        val name = if (track.artists.isEmpty()) track.name else track.artists.joinToString("、") + " - " + track.name
+        val song = JsonObject().apply {
+            addProperty("number", 1); addProperty("name", name); addProperty("hash", track.nativeId)
+            addProperty("size", 0); addProperty("sort", 0); addProperty("timelen", 0); addProperty("bitrate", 0)
+            addProperty("album_id", track.albumId.toLongOrNull() ?: 0L)
+            addProperty("mixsongid", track.albumAudioId.toLongOrNull() ?: 0L)
+        }
+        call("/cloudlist.service/v6/add_song",
+            mapOf("last_time" to (System.currentTimeMillis() / 1000).toString(), "last_area" to "gztx"),
+            JsonObject().apply {
+                addProperty("userid", account.userId.toLong()); addProperty("token", account.token)
+                addProperty("listid", listid); addProperty("list_ver", 0); addProperty("type", 0)
+                addProperty("slow_upload", 1); addProperty("scene", "false;null")
+                add("data", com.google.gson.JsonArray().apply { add(song) })
+            }, account)
+    }
+
+    // ---------------------------------------------------------------- 红心 = "我喜欢"歌单（is_def 2）
+
+    /** "我喜欢"里每首歌的 hash → 它在歌单里的条目 ID（删歌要用这个）；10 分钟内不重读 */
+    @Volatile private var likedFiles: Map<String, Long>? = null
+    @Volatile private var likedLoadedAt = 0L
+    @Volatile private var likedOwner = ""
+    /** 本地刚点亮、还没拿到条目 ID 的（不等重读就能显示成红心） */
+    private val likedPending = ConcurrentHashMap.newKeySet<String>()
+
+    private fun likedList(account: NativeAccount): Long {
+        refs.values.firstOrNull { it.liked && it.owner == account.userId }?.let { return it.native }
+        playlists()
+        return refs.values.firstOrNull { it.liked && it.owner == account.userId }?.native
+            ?: throw SourceAccessException("Kugou liked songs are unavailable. Please retry.")
+    }
+
+    private fun loadLikedFiles(account: NativeAccount, force: Boolean = false): Map<String, Long> {
+        val cached = likedFiles
+        if (!force && cached != null && likedOwner == account.userId && System.currentTimeMillis() - likedLoadedAt < 10 * 60_000L) return cached
+        val listid = likedList(account)
+        val out = HashMap<String, Long>()
+        for (number in 1..200) {
+            val data = call("/cloudlist.service/v4/get_list_all_file", mapOf("plat" to "1"), JsonObject().apply {
+                addProperty("userid", account.userId.toLong()); addProperty("token", account.token); addProperty("listid", listid)
+                addProperty("area_code", 1); addProperty("show_relate_goods", 0); addProperty("allplatform", 1); addProperty("show_cover", 0)
+                addProperty("type", 0); addProperty("page", number); addProperty("pagesize", 50)
+            }, account)
+            val list = data.array("info")
+            for (e in list) {
+                val o = e.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                val hash = o.text("hash").uppercase(java.util.Locale.ROOT)
+                if (hash.isNotEmpty()) out[hash] = o.number("fileid")
+            }
+            val total = data.number("count")
+            if (list.size() < 50 || (total > 0 && out.size >= total)) break
+        }
+        likedFiles = out
+        likedOwner = account.userId
+        likedLoadedAt = System.currentTimeMillis()
+        likedPending.removeAll(out.keys)
+        return out
+    }
+
+    fun likedState(track: NeteaseTrack): Boolean {
+        val account = NativeAccounts.get(MusicSource.KUGOU) ?: return false
+        val hash = track.nativeId.uppercase(java.util.Locale.ROOT)
+        return hash in likedPending || loadLikedFiles(account).containsKey(hash)
+    }
+
+    fun setLiked(track: NeteaseTrack, like: Boolean) {
+        val account = NativeAccounts.get(MusicSource.KUGOU) ?: throw SourceAccessException("Log in to Kugou first.")
+        val hash = track.nativeId.uppercase(java.util.Locale.ROOT)
+        val listid = likedList(account)
+        if (like) {
+            addSong(account, listid, track)
+            likedPending += hash
+            return
+        }
+        // 删歌要条目 ID：缓存里没有（比如刚点亮的）就重读一次
+        val fileid = loadLikedFiles(account)[hash]?.takeIf { it > 0 } ?: loadLikedFiles(account, true)[hash]?.takeIf { it > 0 }
+        if (fileid == null) { likedPending -= hash; return }
+        call("/cloudlist.service/v4/delete_songs", emptyMap(), JsonObject().apply {
+            addProperty("listid", listid); addProperty("userid", account.userId.toLong())
+            add("data", com.google.gson.JsonArray().apply { add(JsonObject().apply { addProperty("fileid", fileid) }) })
+            addProperty("type", 0); addProperty("token", account.token); addProperty("list_ver", 0)
+        }, account)
+        likedPending -= hash
+        likedFiles = likedFiles?.minus(hash)
     }
 
     fun charts(): List<NeteasePlaylist> {

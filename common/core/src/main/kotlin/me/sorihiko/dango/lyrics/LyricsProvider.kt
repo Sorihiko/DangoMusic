@@ -213,12 +213,62 @@ object LyricsProvider {
         }
         val trans = transText?.let { parseLrc(it) } ?: emptyList()
         yrcText?.let { y ->
-            val lines = parseYrc(y)
+            val lines = repairYrc(parseYrc(y), lrcText?.let { parseLrc(it) } ?: emptyList())
             if (lines.isNotEmpty()) return Lyrics(withTranslation(lines, trans), "NetEase")
         }
         val lines = lrcText?.let { parseLrc(it) } ?: return null
         return if (lines.isEmpty()) null else Lyrics(withTranslation(lines, trans), "NetEase")
     }
+
+    /**
+     * 网易云有的歌逐字歌词后半截是坏的：从某一句开始时间整体往后跑偏，一个字能占十几秒，
+     * 按逐字放就会停在半句（比如 Chen-U 的 Carry On 停在 "won’"，后面的句子晚一两分钟才出）。
+     * 普通 LRC 一般是对的：把每句逐字歌词按顺序对上 LRC 里同样文字的那句（取时间最近的），
+     * 连续 3 句都比 LRC 差 10 秒以上，就从那一句起改用 LRC（没有逐字）；之前的逐字照用，
+     * 跨过切换点的那句去掉逐字。制作人员名单（"Piano : xxx" 这种）不参与判断。
+     */
+    internal fun repairYrc(yrc: List<LyricLine>, lrc: List<LyricLine>): List<LyricLine> {
+        if (yrc.isEmpty() || lrc.isEmpty()) return yrc
+        fun norm(s: String) = buildString { for (c in s.lowercase()) if (Character.isLetterOrDigit(c)) append(c) }
+        val lrcNorm = lrc.map { norm(it.text) }
+        var p = 0
+        var run = 0
+        var cut = -1L
+        for (line in yrc) {
+            if (staffLine.containsMatchIn(line.text)) continue
+            val n = norm(line.text)
+            if (n.isEmpty()) continue
+            var best = -1
+            for (j in p until minOf(lrc.size, p + 8)) {
+                if (lrcNorm[j] != n) continue
+                if (best < 0 || Math.abs(lrc[j].timeMs - line.timeMs) < Math.abs(lrc[best].timeMs - line.timeMs)) best = j
+            }
+            if (best < 0) continue
+            p = best + 1
+            if (Math.abs(line.timeMs - lrc[best].timeMs) > DRIFT_MS) {
+                if (run == 0) cut = lrc[best].timeMs
+                run++
+                if (run >= 3) break
+            } else {
+                run = 0
+            }
+        }
+        if (run < 3) return yrc
+        DangoLogger.info("NetEase lyric: word timing drifts from {} ms, using line timing after that", cut)
+        val out = ArrayList<LyricLine>()
+        for (line in yrc) {
+            if (line.timeMs >= cut) continue
+            val words = line.words
+            out += if (words != null && words.any { it.startMs >= cut }) LyricLine(line.timeMs, line.text, null, line.translation) else line
+        }
+        for (line in lrc) if (line.timeMs >= cut) out += line
+        out.sortBy { it.timeMs }
+        return out
+    }
+
+    private const val DRIFT_MS = 10_000L
+    /** 制作人员名单：短短的角色名 + 冒号 + 名字 */
+    private val staffLine = Regex("""^[^:：]{1,40}\s[:：]\s|^[^:：]{1,12}[:：]""")
 
     /**
      * 按时间把翻译对到每一句上：取时间最近的那句翻译（相差 1.5 秒以内）。

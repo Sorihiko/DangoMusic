@@ -7,7 +7,8 @@ import java.util.concurrent.ConcurrentHashMap
 /** Read-only QQ Music library. UI IDs keep charts, playlists and private liked lists separate. */
 internal class QqCatalog(private val call: (String, String, JsonObject, NativeAccount?) -> JsonObject,
     private val profileId: (NativeAccount) -> String) {
-    private class Ref(val id: Long, val chart: Boolean, val dir: Int = 0, val owner: String = "")
+    /** [write] = 自建歌单的 dirId（1..199），往里加歌用；不能写的是 0 */
+    private class Ref(val id: Long, val chart: Boolean, val dir: Int = 0, val owner: String = "", val write: Int = 0)
     private val refs = ConcurrentHashMap<Long, Ref>()
     @Volatile var warning = ""
         private set
@@ -75,12 +76,37 @@ internal class QqCatalog(private val call: (String, String, JsonObject, NativeAc
         if (tid <= 0 && !(owned && dir == 201)) return null
         val liked = owned && dir == 201
         val id = MusicSources.stableId(MusicSource.QQ, if (liked) "liked:$owner" else "playlist:$tid")
-        refs[id] = Ref(tid.coerceAtLeast(0), false, if (liked && tid <= 0) 201 else 0, if (owned) owner else "")
+        refs[id] = Ref(tid.coerceAtLeast(0), false, if (liked && tid <= 0) 201 else 0, if (owned) owner else "",
+            if (owned && dir in 1..199) dir else 0)
         val cover = data.obj("cover")
         return NeteasePlaylist(id, cleanSourceText(data.text("title").ifEmpty { data.text("dirName").ifEmpty { data.text("name").ifEmpty { if (liked) "我喜欢" else "QQ Music" } } }),
             data.number("song_cnt").takeIf { it > 0 }?.toInt() ?: (if (data.has("songNum")) data.number("songNum") else data.number("songnum")).toInt(),
             data.text("picurl").ifEmpty { data.text("picUrl").ifEmpty { data.text("logo").ifEmpty { cover?.text("default_url").orEmpty().ifEmpty { cover?.text("medium_url").orEmpty().ifEmpty { data.text("bigpicUrl") } } } } }, owned)
     }
+
+    /** 自己建的歌单（不含"我喜欢"，dirId 201） */
+    fun editable(): List<NeteasePlaylist> {
+        val account = NativeAccounts.get(MusicSource.QQ) ?: return emptyList()
+        val created = call("music.musicasset.PlaylistBaseRead", "GetPlaylistByUin", params("uin" to account.userId), account)
+        return created.array("v_playlist").mapNotNull { playlist(it.asJsonObject, true, account.userId) }
+            .filter { (refs[it.id]?.write ?: 0) in 1..199 }
+    }
+
+    /** 往自建歌单里加一首：QQ 回的 dirId 是 0 表示什么都没变（本来就在里面） */
+    fun add(playlist: NeteasePlaylist, songId: Long): Boolean {
+        val account = NativeAccounts.get(MusicSource.QQ) ?: throw SourceAccessException("Log in to QQ Music first.")
+        val ref = refs[playlist.id]?.takeIf { it.write in 1..199 && it.owner == account.userId }
+            ?: throw SourceAccessException("Please reopen the playlist list and try again.")
+        val song = JsonObject().apply { addProperty("songId", songId); addProperty("songType", 0) }
+        val data = call("music.musicasset.PlaylistDetailWrite", "AddSonglist", JsonObject().apply {
+            addProperty("dirId", ref.write); add("v_songInfo", JsonArray().apply { add(song) })
+        }, account)
+        return changed(data)
+    }
+
+    /** 写操作的回包：data.result.dirId 不是 0 = 真的改了；是 0 = 什么都没变（本来就在 / 本来就不在） */
+    private fun changed(data: JsonObject): Boolean = (data.obj("result") ?: data).number("dirId") != 0L
+
 
     fun tracks(id: Long): List<NeteaseTrack> {
         val ref = refs[id] ?: throw SourceAccessException("Please reopen the playlist and try again.")
