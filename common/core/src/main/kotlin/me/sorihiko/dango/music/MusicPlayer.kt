@@ -23,6 +23,8 @@ object MusicPlayer {
     @Volatile var current: NeteaseTrack? = null
         private set
     @Volatile var message: String = ""
+    /** 正在放的这首实际拿到的音质（"FLAC"、"320K"…；还没加载好是 ""） */
+    @Volatile var playingQuality: String = ""
         private set
 
     @Volatile var queue: List<NeteaseTrack> = emptyList()
@@ -186,6 +188,8 @@ object MusicPlayer {
         current = track
         state = State.LOADING
         message = "加载中…"
+        PlaybackQuality.override = null
+        playingQuality = ""
         loader.execute { load(gen, track) }
         if (radio != null && idx >= q.size - 2) extendRadio(null)
     }
@@ -248,7 +252,25 @@ object MusicPlayer {
         current = track
         state = State.LOADING
         message = "加载中…"
+        PlaybackQuality.override = null
+        playingQuality = ""
         loader.execute { load(gen, track, startAt, paused) }
+    }
+
+    /** 播放栏上换音质：这首按新音质重新取地址、下载，从现在的位置接着放（暂停着的照旧暂停） */
+    @Synchronized fun reloadWithQuality(quality: AudioQuality) {
+        val track = current ?: return
+        if (!active || external) return
+        PlaybackQuality.override = quality
+        val position = positionMs
+        val paused = state == State.PAUSED
+        val gen = ++generation
+        stopLine()
+        audio = null
+        state = State.LOADING
+        message = "加载中…"
+        playingQuality = ""
+        loader.execute { load(gen, track, { position }, paused) }
     }
 
     /** 一起听：房主放成员点的歌，插在当前这首后面，放完接着原来的队列 */
@@ -384,6 +406,7 @@ object MusicPlayer {
             if (gen != generation) return
             if (measuredDuration > 0) track.durationMs = measuredDuration
             audio = bytes
+            playingQuality = PlaybackQuality.describe(bytes, track.durationMs)
             message = when {
                 url.trialOnly -> "Preview only: membership is needed for the full song"
                 url.replaced -> "The original was unavailable, playing another version"

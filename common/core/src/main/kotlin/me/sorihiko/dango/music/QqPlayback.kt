@@ -28,9 +28,11 @@ internal class QqPlayback(private val transport: (JsonObject, NativeAccount?) ->
             val params = JsonObject().apply {
                 addProperty("guid", guid); addProperty("uin", account?.userId ?: "0"); addProperty("ctx", 0)
                 if (!desktop) { addProperty("loginflag", 1); addProperty("platform", "20") }
-                add("filename", JsonArray().apply { for (prefix in listOf("M500", "M800")) add(JsonPrimitive("$prefix$media.mp3")) })
-                add("songmid", JsonArray().apply { repeat(2) { add(JsonPrimitive(track.nativeId)) } })
-                add("songtype", JsonArray().apply { repeat(2) { add(JsonPrimitive(0)) } })
+                // 按设置的音质从高到低列文件；QQ 按这个顺序回，第一个有地址的就是能拿到的最高档
+                val files = PlaybackQuality.wanted.qqFiles
+                add("filename", JsonArray().apply { for ((prefix, ext) in files) add(JsonPrimitive("$prefix$media.$ext")) })
+                add("songmid", JsonArray().apply { repeat(files.size) { add(JsonPrimitive(track.nativeId)) } })
+                add("songtype", JsonArray().apply { repeat(files.size) { add(JsonPrimitive(0)) } })
             }
             val reply = call(if (desktop) "desktop" else "web",
                 if (desktop) "music.vkey.GetVkey" else "vkey.GetVkeyServer",
@@ -97,7 +99,7 @@ internal class QqPlayback(private val transport: (JsonObject, NativeAccount?) ->
             for (candidate in candidates) {
                 val uri = try { URI(candidate) } catch (_: Exception) { continue }
                 if (uri.scheme !in listOf("https","http") || uri.host.isNullOrEmpty() || uri.userInfo != null ||
-                    !uri.path.orEmpty().endsWith(".mp3",true)) continue
+                    !(uri.path.orEmpty().endsWith(".mp3",true) || uri.path.orEmpty().endsWith(".flac",true))) continue
                 return NeteaseApi.SongUrl(candidate,false)
             }
         }

@@ -27,17 +27,25 @@ internal class KugouPlayback @JvmOverloads constructor(
             }
             return null
         }
+        val qualities = PlaybackQuality.wanted.kugouQualities
+        // 要高于 128k 时先问 App 接口（网页接口一般只给 128k）；不接受的话照旧退回网页，再要低档
+        fun appTry(list: List<String>): NeteaseApi.SongUrl? {
+            appLoop@ for (quality in list) for (metadata in variants) {
+                val root = try { app(track, account, quality, metadata) } catch (_: SocketTimeoutException) { break@appLoop }
+                checked(root, "app-$quality")
+                candidate(root)?.let { return it }
+            }
+            return null
+        }
+        val high = qualities.filter { it != "128" }
+        appTry(high)?.let { return it }
         for (metadata in variants) {
             val root = try { web(track, account, metadata) } catch (_: SocketTimeoutException) { break }
             checked(root, "web")
             candidate(root)?.let { return it }
         }
         // 网页会话不一定被 App 接口接受；拒绝时保留网页的可用结果，不把整个账号误判成失效。
-        appLoop@ for (quality in listOf("320", "128")) for (metadata in variants) {
-            val root = try { app(track, account, quality, metadata) } catch (_: SocketTimeoutException) { break@appLoop }
-            checked(root, "mp3-$quality")
-            candidate(root)?.let { return it }
-        }
+        appTry(qualities - high)?.let { return it }
         return trial
     }
 

@@ -11,12 +11,13 @@ internal class NeteasePlayback @JvmOverloads constructor(private val request: (S
         val accepted = (aliases + id).filter { it > 0 }.toSet()
         var unsupported = false
         var preview: NeteaseApi.SongUrl? = null
-        val attempts = listOf("exhigh", "standard", "legacy")
+        // 按设置的音质从高往低要，最后退到旧接口
+        val attempts = PlaybackQuality.wanted.neteaseLevels + "legacy"
         for (level in attempts) {
             val body = JsonObject().apply {
                 addProperty("ids", "[$id]")
                 if (level == "legacy") addProperty("br", 192000)
-                else { addProperty("level", level); addProperty("encodeType", "mp3") }
+                else { addProperty("level", level); addProperty("encodeType", if (level == "lossless") "flac" else "mp3") }
             }
             val root = try { request(if (level == "legacy") "legacy" else "v1", body) }
                 catch (_: SocketTimeoutException) { if (level == "legacy") break else continue }

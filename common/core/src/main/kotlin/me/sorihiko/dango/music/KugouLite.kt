@@ -85,14 +85,14 @@ internal object KugouLite {
 
     // ------------------------------------------------------------ 取歌
 
-    /** 概念版身份取播放地址：先要 320k，没有再要 128k（我们只能放 MP3） */
+    /** 概念版身份取播放地址：按设置的音质从高往低要（MP3 或 FLAC） */
     fun songUrl(track: NeteaseTrack, account: NativeAccount): NeteaseApi.SongUrl? {
         ensureDailyVip(account)
-        for (quality in listOf("320", "128")) {
+        for (quality in PlaybackQuality.wanted.kugouQualities) {
             val root = urlRequest(track, account, quality)
             checkVerification(root)
             val url = playUrl(root) ?: continue
-            if (root.text("extName").let { it.isNotEmpty() && !it.equals("mp3", true) }) continue
+            if (root.text("extName").let { it.isNotEmpty() && !it.equals("mp3", true) && !it.equals("flac", true) }) continue
             val seconds = root.number("timeLength")
             // 响度：volume 是增益（分贝），volume_peak 是峰值（分贝，换成线性）
             fun decibels(key: String) = root.get(key)?.takeIf { it.isJsonPrimitive }?.asString?.toFloatOrNull()?.takeIf { it.isFinite() }

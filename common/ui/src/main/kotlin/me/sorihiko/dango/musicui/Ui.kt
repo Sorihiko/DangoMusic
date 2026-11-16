@@ -107,6 +107,37 @@ internal class Ui {
 
     fun hover(b: LayoutBounds) = b.contains(mx, my) && occluder?.contains(mx, my) != true && popup?.contains(mx, my) != true
 
+    /** 对齐到屏幕像素：逻辑坐标 × 缩放取整再换回来 */
+    fun snap(v: Float): Float {
+        val sc = scale.takeIf { it > 0f } ?: 1f
+        return Math.round(v * sc) / sc
+    }
+
+    /** 把一段逻辑长度取整成整数个屏幕像素（至少 [minPx] 个） */
+    fun snapLength(v: Float, minPx: Float = 1f): Float {
+        val sc = scale.takeIf { it > 0f } ?: 1f
+        return max(minPx, Math.round(v * sc).toFloat()) / sc
+    }
+
+    /**
+     * 水平或竖直的细线（图标用），两头圆头：粗细取整到整像素，线的中心对齐像素。
+     * 界面缩放不是整数时，几条平行细线才会一样粗、一样实（不然有的被抗锯齿摊开、看着又虚又细）
+     */
+    fun crispLine(x1: Float, y1: Float, x2: Float, y2: Float, thick: Float, color: Color) {
+        val sc = scale.takeIf { it > 0f } ?: 1f
+        val px = max(1f, Math.round(thick * sc).toFloat())
+        val t = px / sc
+        if (abs(y1 - y2) <= abs(x1 - x2)) {
+            val y = (Math.round(y1 * sc - px / 2f) + px / 2f) / sc
+            val l = min(x1, x2); val r = max(x1, x2)
+            card(LayoutBounds(l - t / 2f, y - t / 2f, r - l + t, t), color, t / 2f)
+        } else {
+            val x = (Math.round(x1 * sc - px / 2f) + px / 2f) / sc
+            val top = min(y1, y2); val bottom = max(y1, y2)
+            card(LayoutBounds(x - t / 2f, top - t / 2f, t, bottom - top + t), color, t / 2f)
+        }
+    }
+
     fun card(b: LayoutBounds, color: Color, radius: Float = 10f) =
         ctx.drawShape(b, ShapeStyle(color, radius))
 

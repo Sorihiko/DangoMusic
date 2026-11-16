@@ -475,3 +475,12 @@ Log in to Kugou first.	请先登录酷狗。
 This song is not from Kugou.	这首歌不是酷狗的。
 This source has no liked songs.	这个音源没有红心。
 Kugou liked songs are unavailable. Please retry.	读不到酷狗的“我喜欢”，请重试。
+Default audio quality	默认音质
+Quality every song starts with; you can change it for the current song on the player bar	每首歌默认用的音质；正在放的这首可以在播放栏上临时换
+Standard quality	标准
+High quality	极高
+Lossless quality	无损
+Current song quality	当前歌曲音质
+Up to 128 kbps	128kbps
+Near-CD detail, up to 320 kbps	近 CD 音质的细节体验，最高 320kbps
+Lossless FLAC, needs membership and much more data	无损 FLAC，一般要会员，文件也大得多

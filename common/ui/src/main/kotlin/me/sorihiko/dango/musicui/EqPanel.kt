@@ -50,13 +50,15 @@ internal class EqPanel(private val ui: Ui) {
         val k = 1f + pressA.tick(0f) * 0.14f
         val base = mixColor(Color(1f, 1f, 1f, 0.07f), Theme.CARD_HOVER, h)
         ui.card(b.scaled(k), mixColor(base, RED.copy(a = 0.85f), o), 9f * k)
-        // 图标：五根高低不一的竖条（频谱）
+        // 图标：五根高低不一的竖条（频谱）。间距和粗细都取整到屏幕像素，全屏时几根才一样粗、间隔一样
         val c = if (enabled) Theme.TEXT_PRIMARY else Theme.ICON_DISABLED
-        val cx = b.x + b.width / 2f
+        val cx = ui.snap(b.x + b.width / 2f)
+        val step = ui.snapLength(3.6f * k, 3f)
+        val t = 2f * k
         for ((i, hh) in floatArrayOf(6f, 11f, 14f, 9f, 5f).withIndex()) {
-            val x = cx + (i - 2) * 3.2f * k
-            val bh = hh * k
-            ui.card(LayoutBounds(x - 0.8f * k, cy - bh / 2f, 1.6f * k, bh), c, 0.8f * k)
+            val x = cx + (i - 2) * step
+            val half = (hh * k - t) / 2f
+            ui.crispLine(x, cy - half, x, cy + half, t, c)
         }
         if (enabled) ui.hits += b to {
             pressA.v -= 7f

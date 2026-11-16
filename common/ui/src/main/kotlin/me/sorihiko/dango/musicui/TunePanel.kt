@@ -56,9 +56,12 @@ internal class TunePanel(private val ui: Ui) {
         val c = if (enabled) Theme.TEXT_PRIMARY else Theme.ICON_DISABLED
         val cx = b.x + b.width / 2f
         val lw = 14f * k
+        // 三道线的间距和粗细取整到屏幕像素：全屏时才一样粗、间隔一样
+        val step = ui.snapLength(4.5f * k, 3f)
+        val y0 = ui.snap(cy)
         for ((i, f) in floatArrayOf(0.30f, 0.70f, 0.45f).withIndex()) {
-            val y = cy + (i - 1) * 4.5f * k
-            ui.card(LayoutBounds(cx - lw / 2f, y - 0.7f, lw, 1.4f), c, 0.7f)
+            val y = y0 + (i - 1) * step
+            ui.crispLine(cx - lw / 2f + 0.8f, y, cx + lw / 2f - 0.8f, y, 1.6f * k, c)
             val kx = cx - lw / 2f + lw * f
             ui.ctx.drawShape(LayoutBounds(kx - 2f * k, y - 2f * k, 4f * k, 4f * k), ShapeStyle(c, 2f * k))
         }

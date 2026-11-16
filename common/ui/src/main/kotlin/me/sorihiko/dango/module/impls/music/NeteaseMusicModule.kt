@@ -117,6 +117,9 @@ class NeteaseMusicModule : Module() {
     @ModuleValue("Toggle lyrics", "Hotkey to turn lyrics on or off")
     private val keyLyrics = IntValue(-100, 255, 0)
 
+    @ModuleValue("Default audio quality", "Quality every song starts with; you can change it for the current song on the player bar")
+    private val audioQuality = IntValue(0, 2, 1)
+
     @ModuleValue("Volume normalization", "Keep songs at a similar loudness")
     private val normalize = BooleanValue(true)
 
@@ -200,12 +203,12 @@ class NeteaseMusicModule : Module() {
         MusicPlayer.repeatOne = repeatOne.get()
     }
 
-    /** 播放栏左边的播放模式按钮：顺序 → 随机 → 单曲循环 → 顺序。返回切到的模式名（界面提示用） */
+    /** 播放栏左边的播放模式按钮：顺序 → 单曲循环 → 随机 → 顺序（和网易云一样）。返回切到的模式名（界面提示用） */
     fun cyclePlayMode(): String {
         val next = when {
-            repeatOne.get() -> "Play in order"
-            shuffle.get() -> "Repeat one"
-            else -> "Shuffle"
+            shuffle.get() -> "Play in order"
+            repeatOne.get() -> "Shuffle"
+            else -> "Repeat one"
         }
         shuffle.set(next == "Shuffle")
         repeatOne.set(next == "Repeat one")
@@ -340,6 +343,7 @@ class NeteaseMusicModule : Module() {
         MusicPlayer.repeatOne = repeatOne.get()
 
         MusicPlayer.normalize = normalize.get()
+        me.sorihiko.dango.music.PlaybackQuality.default = me.sorihiko.dango.music.AudioQuality.values()[audioQuality.value.coerceIn(0, 2)]
 
         // 环境音效：设置和玩家周围的环境交给解码线程
         EnvironmentAudio.enabled = envAudio.get()

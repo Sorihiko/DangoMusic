@@ -46,12 +46,23 @@ internal class AddPanel(private val ui: Ui) {
             val d = b.scaled(k)
             ui.ctx.drawShape(d, ShapeStyle(Theme.CARD_HOVER.copy(a = Theme.CARD_HOVER.a * h), d.height / 2f))
         }
-        // 加号：两道细条
-        val cx = b.x + b.width / 2f
-        val cy = b.y + b.height / 2f
+        // 图标：圆角方框里一个 +，方框上面再一道短横线（像一摞歌单）。线条对齐屏幕像素，全屏也不发虚
+        val cx = ui.snap(b.x + b.width / 2f)
+        val cy = ui.snap(b.y + b.height / 2f)
         val c = Theme.TEXT_SECONDARY
-        ui.card(LayoutBounds(cx - 6f * k, cy - 0.8f * k, 12f * k, 1.6f * k), c, 0.8f * k)
-        ui.card(LayoutBounds(cx - 0.8f * k, cy - 6f * k, 1.6f * k, 12f * k), c, 0.8f * k)
+        val lineW = ui.snapLength(1.8f * k)
+        val boxW = ui.snapLength(13f * k)
+        val boxH = ui.snapLength(11f * k)
+        val box = LayoutBounds(cx - boxW / 2f, cy - boxH / 2f + ui.snapLength(1.5f * k), boxW, boxH)
+        ui.ctx.drawShape(box, ShapeStyle(Color.TRANSPARENT, 2.5f * k, lineW, c))
+        // 方框上面的短横线
+        val topY = box.y - ui.snapLength(3f * k)
+        ui.crispLine(cx - 4.5f * k, topY, cx + 4.5f * k, topY, lineW, c)
+        // 框里的 +
+        val pcy = box.y + box.height / 2f
+        val arm = 3f * k
+        ui.crispLine(cx - arm, pcy, cx + arm, pcy, lineW, c)
+        ui.crispLine(cx, pcy - arm, cx, pcy + arm, lineW, c)
         ui.hits += b to {
             pressA.v -= 7f
             open = !open
