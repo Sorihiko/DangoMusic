@@ -97,6 +97,7 @@ object RoomAcoustics {
         var escaped = 0f
         var firstHits = 0
         var firstDistance = 0.0
+        val firstDistances = DoubleArray(RAYS)
         var absorbed = 0.0
         var hits = 0
         var left = 0.0
@@ -123,6 +124,7 @@ object RoomAcoustics {
                     break
                 }
                 if (bounce == 0) {
+                    firstDistances[firstHits] = hit.distance
                     firstHits++
                     firstDistance += hit.distance
                     // 近处的墙对左右感觉影响更大
@@ -147,7 +149,10 @@ object RoomAcoustics {
         val effective = (enclosure * (absorption + BASE_LOSS) + open).coerceIn(0.01f, 0.99f)
         // Eyring 公式：T60 = 0.161 · V / (−S · ln(1 − α))，平均自由程 l = 4V/S
         val decay = (0.161f * meanFree / 4f / -ln(1f - effective)).coerceIn(0.1f, 3.5f)
-        val early = (meanFree * 2f / SPEED_OF_SOUND * 1000f).coerceIn(2f, 80f)
+        // 第一次回声看近处的墙：用第一下碰到东西的距离的中位数。平均值会被从门窗穿出去、
+        // 碰到远处地形的几根射线拉得很大，延迟一直顶在上限（#65 实测石头房里 80ms 不落）
+        val nearest = if (firstHits > 0) firstDistances.copyOf(firstHits).also { it.sort() }[firstHits / 2].toFloat() else meanFree
+        val early = (nearest * 2f / SPEED_OF_SOUND * 1000f).coerceIn(2f, 80f)
         val pan = if (left + right > 1e-6) ((right - left) / (right + left)).toFloat() else 0f
         return Room(enclosure, decay, early, absorption, pan)
     }

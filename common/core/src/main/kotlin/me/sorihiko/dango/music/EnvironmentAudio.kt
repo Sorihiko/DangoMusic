@@ -6,6 +6,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.ln
+import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sin
 
@@ -173,11 +174,24 @@ object EnvironmentAudio {
             }
             if (reverb) {
                 reverbSample(mono / ch, baseDelay, tapLeft, tapRight, lateDelay, out)
+                // 湿声的峰值随音乐内容在原声的 2～6 倍之间摆（梳状滤波器只按平均能量归一，管不住尖峰），
+                // 固定系数要么破音、要么听不见回声：湿声单独跟着峰值走，尖峰来了快压，过去了慢慢放（#65）
+                var wl = out[0] * wet
+                var wr = out[1] * wet
+                val wetPeak = max(kotlin.math.abs(wl), kotlin.math.abs(wr))
+                wetEnv += (wetPeak - wetEnv) * (if (wetPeak > wetEnv) wetAttack else wetRelease)
+                if (wetEnv > WET_CEIL) {
+                    val comp = WET_CEIL / wetEnv
+                    wl *= comp
+                    wr *= comp
+                }
+                // 回声大的时候原声让出一点余量，加起来不顶满
+                val duck = 1f - DRY_DUCK * wet
                 if (ch == 2) {
-                    pcm[i] = limit((dry[0] + out[0] * wet) * gain)
-                    pcm[i + 1] = limit((dry[1] + out[1] * wet) * gain)
+                    pcm[i] = limit((dry[0] * duck + wl) * gain)
+                    pcm[i + 1] = limit((dry[1] * duck + wr) * gain)
                 } else {
-                    pcm[i] = limit((dry[0] + (out[0] + out[1]) * 0.5f * wet) * gain)
+                    pcm[i] = limit((dry[0] * duck + (wl + wr) * 0.5f) * gain)
                 }
             } else {
                 for (c in 0 until ch) pcm[i + c] = limit(dry[c] * gain)
@@ -216,6 +230,7 @@ object EnvironmentAudio {
 
     /** 只清滤波器和混响里的声音，参数不动 */
     private fun clearState() {
+        wetEnv = 0f
         x1.fill(0f); x2.fill(0f); y1.fill(0f); y2.fill(0f)
         delay.fill(0f)
         for (side in combs) for (c in side) c.fill(0f)
@@ -228,20 +243,32 @@ object EnvironmentAudio {
      * 低音重的歌原声本来就接近满幅，直接截断会大片削波、听起来"炸"。
      * 低于 [LIMIT_KNEE] 原样不动，超出的部分平滑压进剩下的余量里，永远到不了满幅。
      */
+    /** 限幅前见过的最大绝对值（诊断 / 测试用，[takePeak] 读完清零） */
+    @Volatile private var peakBeforeLimit = 0f
+    internal fun takePeak(): Float = peakBeforeLimit.also { peakBeforeLimit = 0f }
+
     private fun limit(x: Float): Short {
         if (!x.isFinite()) {
             broken = true
             return 0
         }
         val a = kotlin.math.abs(x)
+        if (a > peakBeforeLimit) peakBeforeLimit = a
         if (a <= LIMIT_KNEE) return x.toInt().toShort()
         val room = 32767f - LIMIT_KNEE
         val y = LIMIT_KNEE + room * kotlin.math.tanh((a - LIMIT_KNEE) / room)
         return (if (x < 0) -y else y).toInt().toShort()
     }
 
+    /** 湿声峰值包络，和它的起音 / 释放系数（按采样率算） */
+    private var wetEnv = 0f
+    private var wetAttack = 0.02f
+    private var wetRelease = 0.0001f
+
     private fun setup(sampleRate: Int) {
         rate = sampleRate
+        wetAttack = (1.0 - exp(-1.0 / (WET_ATTACK_S * sampleRate))).toFloat()
+        wetRelease = (1.0 - exp(-1.0 / (WET_RELEASE_S * sampleRate))).toFloat()
         val scale = sampleRate / 44100f
         // 延迟线要装得下最晚的一次早期反射加后期混响的预延迟
         delay = FloatArray((MAX_EARLY_MS / 1000f * sampleRate * (TAP_TIMES.last() + 0.5f)).toInt() + 2)
@@ -344,4 +371,11 @@ object EnvironmentAudio {
     private const val MAX_EARLY_MS = 80f
     private const val SMOOTH_MS = 350f
     private const val ALLPASS_GAIN = 0.5f
+    /** 湿声峰值上限（约满幅的 30%）：响的歌回声也照样听得见，但叠上原声不会顶满 */
+    private const val WET_CEIL = 9800f
+    /** 湿声包络：起音 1ms（尖峰马上压住），释放 250ms（不会一抽一抽地忽大忽小） */
+    private const val WET_ATTACK_S = 0.001
+    private const val WET_RELEASE_S = 0.25
+    /** 回声最大时原声压低多少（wet 0.6 时约 -2.6 dB） */
+    private const val DRY_DUCK = 0.45f
 }
