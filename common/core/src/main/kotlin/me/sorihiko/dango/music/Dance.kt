@@ -248,7 +248,7 @@ object Dance {
         }
         val beats = (songClock + LATENCY_MS + offsetMs - gridMs) / periodMs
         val phase = (beats - floor(beats)).toFloat()                  // 0..1：这一拍走到哪
-        val squash = 1f + 0.3f * amount * envelope * bounce(phase)
+        val squash = 1f + BOUNCE_DEPTH * amount * envelope * bounce(phase)
         // 转圈：匀速转，四拍一圈
         if (spin) spinAngle = (spinAngle + dt * 1000.0 / periodMs * 90.0 * envelope) % 360.0
         else spinAngle = 0.0
@@ -256,19 +256,27 @@ object Dance {
     }
 
     /**
-     * 一拍里的形变（-1 = 压扁到底，正 = 拉长）：拍子前一点点开始往下压，正好在拍子上压到最扁，
-     * 然后弹起来拉长，拍子一半的时候回到原样，后半拍不动，等下一拍。
+     * 一拍里的形变（-1 = 压扁到底，+1 = 拉到最长），一拍正好一个完整周期，拍与拍之间没有停顿：
+     * 正好在拍子上压到最扁，接着快速弹起，到 [STRETCH_PEAK] 拍处拉到最长，再一路平滑地落回去，
+     * 下一拍又压到最扁。
+     *
+     * 以前是前半拍弹一下、后半拍原样不动，每段两头还都是缓入缓出，两次弹之间夹着将近半拍的静止，
+     * 看起来一顿一顿的。现在用一条余弦把整拍连起来：只在最扁和最长那一下速度为 0（像弹簧到头），
+     * 中间一直在动；拍点前后速度连续，所以连着弹也是顺的。
      */
     private fun bounce(phase: Float): Float {
-        val p = if (phase > 0.92f) phase - 1f else phase          // -0.08..0.92，0 = 拍子
-        fun ease(t: Float) = t * t * (3f - 2f * t)
-        return when {
-            p < 0f -> -ease((p + 0.08f) / 0.08f)                        // 往下压
-            p < 0.22f -> -1f + 1.6f * ease(p / 0.22f)                   // 弹起来拉长
-            p < 0.5f -> 0.6f * (1f - ease((p - 0.22f) / 0.28f))         // 回到原样
-            else -> 0f
-        }
+        val p = phase.coerceIn(0f, 1f)
+        // 把一拍拆成"弹起"（短、快）和"落下"（长、缓）两段，各占余弦的半个周期
+        val w = if (p < STRETCH_PEAK) 0.5f * p / STRETCH_PEAK
+            else 0.5f + 0.5f * (p - STRETCH_PEAK) / (1f - STRETCH_PEAK)
+        return -cos(2.0 * PI * w).toFloat()
     }
+
+    /** 一拍里拉到最长的位置（0..1）：小于 0.5 时弹起比落下快，更像踩在点上 */
+    private const val STRETCH_PEAK = 0.35f
+
+    /** 幅度为 1 时，压扁 / 拉长各多少（上下缩放 ±这么多） */
+    private const val BOUNCE_DEPTH = 0.2f
 
     /** 对拍要点几下 */
     const val TAP_COUNT = 16
