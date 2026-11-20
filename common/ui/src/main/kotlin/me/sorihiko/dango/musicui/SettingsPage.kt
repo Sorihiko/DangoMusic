@@ -237,12 +237,14 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
                 "wiggleFps" to "wiggle", "wiggleAmount" to "wiggle",
                 "flashSize" to "textFlash",
                 "danceAuto" to "dance", "danceTap" to "dance", "danceSpin" to "dance", "danceAmount" to "dance", "danceOffset" to "dance",
+                "danceSpinSpeed" to "danceSpin",
                 "translationColor" to "translation", "translationAnimation" to "translation", "translationWiggle" to "translation",
             ),
             fmts = mapOf(
                 "spread" to { v: Any -> "${(v as FloatValue).value.roundToInt()}°" },
                 "glowRadius" to ::percent,
                 "danceOffset" to { v: Any -> "${(v as IntValue).value} ms" },
+                "danceSpinSpeed" to { v: Any -> "%.2f×".format((v as FloatValue).value) },
             ),
         )
         ly.left.remove("smoothFont")   // 合进了"歌词字体"那一行
@@ -252,7 +254,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
             Group("Translation", "Under each line", ly.m, false, ly.take(listOf("translation", "translationColor", "translationAnimation", "translationWiggle"))),
             Group("Glow", "Deep Glow", ly.m, false, ly.take(listOf("glow", "glowNightOnly", "glowStrength", "glowRadius"))),
             Group("Motion", "Animation", ly.m, false, ly.take(listOf("wiggle", "wiggleFps", "wiggleAmount", "textFlash", "wordPop", "flashSize"))),
-            Group("Dance", "Mobs on the beat", ly.m, false, ly.take(listOf("dance", "danceAuto", "danceTap", "danceSpin", "danceAmount", "danceOffset"))),
+            Group("Dance", "Mobs on the beat", ly.m, false, ly.take(listOf("dance", "danceAuto", "danceTap", "danceSpin", "danceSpinSpeed", "danceAmount", "danceOffset"))),
         )
         // 左上角的原版风格"正在播放"和 Song card 是同一类东西，放到 Music & HUD 里
         val nowPlaying = Group("Song info", "Top left, classic style", ly.m, false, ly.take(listOf("nowPlaying", "showCover")))
