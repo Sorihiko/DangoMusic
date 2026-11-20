@@ -44,6 +44,9 @@ interface Gfx {
     val world: WorldView
     val glow: GlowPass
     val hud: HudCanvas
+
+    /** 驾驶舱歌词的玻璃字 / 发光字 */
+    val glassText: GlassTextPass
 }
 
 /** 平滑字体的样式 */
@@ -111,6 +114,9 @@ interface TextCanvas {
     fun rotate(degrees: Float)
     fun scale(x: Float, y: Float)
 
+    /** 横向错切：x 加上 -t·y（t = tan(角度)，y 向下时字的上半部分往右倒，就是斜体） */
+    fun skewX(t: Float)
+
     /** 平滑字体的颜色 */
     fun color(r: Float, g: Float, b: Float, a: Float)
 
@@ -168,6 +174,52 @@ interface GlowPass {
     /** 出错了：之后不再用发光 */
     fun disable(reason: Throwable)
 }
+
+/**
+ * 玻璃字（驾驶舱歌词用）：字本身是一块透明玻璃，透出（折射后的）背后画面，玻璃里面发光、外面一圈光晕；
+ * 也可以画成实心的发光字（[GlassTextStyle.solid]）。
+ *
+ * 用法：[begin] → 用 [TextCanvas] 画字（坐标是窗口像素，原点左上角，y 向下）→ [end]。
+ * 画字时的颜色是"遮罩"的约定，不是最终颜色：
+ *   alpha = 这里有多少字（0 = 没有）；rgb = 这个字的颜色 × 亮度（颜色先调成最亮的通道是 1，
+ *   这样合成时能分出颜色和亮度）。光晕、玻璃里的光都用每个字自己的颜色。
+ * 显卡做不了离屏画布 / 着色器时，字直接按这个颜色画到屏幕上，透视照样生效。
+ */
+interface GlassTextPass {
+    /** 开始画；返回 false 表示这一帧什么都画不了 */
+    fun begin(view: GlassTextView): Boolean
+
+    /** 画一条没有贴图的竖条（引导线用），颜色约定同上（rgb = 颜色 × 亮度），上下两端的 alpha 可以不同 */
+    fun bar(x: Float, y: Float, w: Float, h: Float, r: Float, g: Float, b: Float, alphaTop: Float, alphaBottom: Float)
+
+    /** 把画好的字合成到画面上；begin 返回 true 之后一定要调用（出错也要） */
+    fun end(style: GlassTextStyle)
+}
+
+/**
+ * 透视：先绕 (pivotX, pivotY) 前后倾斜 [pitch] 度，再左右转 [yaw] 度（窗口像素）。
+ * yaw > 0 时左边靠近、右边退远；pitch > 0 时下边靠近、上边退远。
+ */
+class GlassTextView(val pivotX: Float, val pivotY: Float, val yaw: Float, val pitch: Float)
+
+class GlassTextStyle(
+    /** 0..1：字有多"浓"（实心字的不透明度 / 玻璃有多明显）；越低越通透 */
+    val opacity: Float,
+    /** 折射偏移（窗口像素） */
+    val refraction: Float,
+    /** 玻璃里面发出的光（0 = 不发光） */
+    val emission: Float,
+    /** 字外面的光晕（0 = 没有） */
+    val halo: Float,
+    /** 0..1：玻璃后面的画面有多模糊（磨砂） */
+    val frost: Float,
+    /** true = 不做玻璃，画成实心的发光字 */
+    val solid: Boolean,
+    /** 0..1：字本身染上多少颜色（0 = 白字配彩色光晕，1 = 字也是彩色的） */
+    val tintText: Float,
+    /** 字的整体亮度（1 = 正常） */
+    val brightness: Float,
+)
 
 /** 左上角"正在播放"这种原版风格的 HUD（原版 GUI 缩放的坐标） */
 interface HudCanvas {

@@ -70,6 +70,18 @@ class LyricsModule : Module() {
     /** 快捷键"开关歌词"用 */
     fun toggleLyrics() = worldMode.toggle()
 
+    @ModuleValue("Cockpit lyrics", "Lyrics also sit along the side of the screen like a cockpit display, glowing in the lyric colors")
+    private val cockpit = BooleanValue(false)
+
+    @ModuleValue("Cockpit side", "Which side of the screen the cockpit lyrics sit on")
+    private val cockpitSide = IntValue(0, 1, 1)
+
+    @ModuleValue("Glass text", "Cockpit lyrics are see-through glass that bends what is behind them")
+    private val cockpitGlass = BooleanValue(false)
+
+    @ModuleValue("Inertia", "Cockpit lyrics lag a little when you turn or jump, then spring back")
+    private val cockpitInertia = BooleanValue(false)
+
     @ModuleValue("Top-left song info", "Show the current song in the top left")
     private val nowPlaying = BooleanValue(false)
 
@@ -186,6 +198,8 @@ class LyricsModule : Module() {
     }
 
     private val cover = CoverArt()
+    /** 驾驶舱歌词（贴在屏幕一侧的发光 / 玻璃歌词） */
+    private val side = SideLyrics()
     private val fetcher = Executors.newSingleThreadExecutor { r -> Thread(r, "Dango-Lyrics").apply { isDaemon = true } }
 
     private object NotFound
@@ -428,8 +442,36 @@ class LyricsModule : Module() {
         val s = current
         DangoClient.gfx.guarded {
             if (nowPlaying.get() && s != null && !songCardCovers()) drawNowPlaying(s, currentKey?.let { lyricsFor(it) })
+            // 关掉驾驶舱歌词后也再画几帧，让列表淡出而不是一下子消失（完全淡出后什么都不画）
+            if (cockpit.get() || !side.idle) drawSide(s)
             Dance.tapStatus()?.let { drawTapStatus(it) }
         }
+    }
+
+    /** 驾驶舱歌词：把这一帧的歌词、进度、封面主色交给 [SideLyrics] */
+    private fun drawSide(s: NowPlaying?) {
+        val frame = s?.let {
+            val lyrics = currentKey?.let { key -> lyricsFor(key) }
+            val pos = songPos.toLong()
+            SideLyrics.Frame(
+                key = it.key,
+                title = it.title,
+                artist = it.artist,
+                lines = lyrics?.lines.orEmpty(),
+                index = lyrics?.indexAt(pos) ?: -1,
+                positionMs = pos,
+                // 和 3D 歌词同一套配色：自定义颜色 / 封面主色 / 封面渐变 / 彩虹
+                color = { u -> charRgb(u, 1f, textRgb) },
+                beat = if (!MusicPlayer.external) MusicPlayer.beatPulse(MusicPlayer.shownPositionMs) else 0f,
+                visible = cockpit.get() && !DangoClient.platform.chatOpen,
+            )
+        }
+        side.draw(frame, SideLyrics.Settings(
+            right = cockpitSide.value == 1,
+            glass = cockpitGlass.get(),
+            inertia = cockpitInertia.get(),
+            translation = translation.get(),
+        ))
     }
 
     /** 对拍时准星下面显示点到第几下 / 点出来的 BPM */

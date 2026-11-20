@@ -40,7 +40,11 @@ class GlassBackdrop {
     var ready = false
         private set
 
-    fun capture() {
+    /** 原分辨率、不模糊的那张（玻璃字的清透折射用） */
+    val sharpTexture: Int get() = captureTexture
+
+    /** [frost] = false：不做重度模糊那一级（玻璃字只用清晰和轻度模糊两张，省几次渲染） */
+    fun capture(frost: Boolean = true) {
         val w = mc.displayWidth
         val h = mc.displayHeight
         if (w <= 0 || h <= 0) return
@@ -72,8 +76,10 @@ class GlassBackdrop {
             blit(half.texture, softA)
             blur(softA, softB, 1f, 2)
 
-            blit(softA.texture, frostA)
-            blur(frostA, frostB, 1.6f, 3)
+            if (frost) {
+                blit(softA.texture, frostA)
+                blur(frostA, frostB, 1.6f, 3)
+            }
 
             ready = true
         } finally {
@@ -140,8 +146,11 @@ class GlassBackdrop {
     }
 }
 
-/** 线性过滤 + 边缘钳制的颜色 FBO（RenderTarget 是 NEAREST，不适合降采样） */
-class GlassTarget {
+/**
+ * 线性过滤 + 边缘钳制的颜色 FBO（RenderTarget 是 NEAREST，不适合降采样）。
+ * [internalFormat] 默认 8 位；玻璃字的模糊金字塔用半精度浮点，光晕和法线没有色带。
+ */
+class GlassTarget(private val internalFormat: Int = GL11.GL_RGBA8) {
     var fbo = -1
         private set
     var texture = -1
@@ -159,7 +168,7 @@ class GlassTarget {
         width = nw
         height = nh
 
-        texture = createTexture(nw, nh)
+        texture = createTexture(nw, nh, internalFormat)
         fbo = GL30.glGenFramebuffers()
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fbo)
         GL30.glFramebufferTexture2D(
@@ -186,11 +195,11 @@ class GlassTarget {
     }
 
     companion object {
-        fun createTexture(w: Int, h: Int): Int {
+        fun createTexture(w: Int, h: Int, internalFormat: Int = GL11.GL_RGBA8): Int {
             val id = GL11.glGenTextures()
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, id)
             GL11.glTexImage2D(
-                GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, w, h, 0,
+                GL11.GL_TEXTURE_2D, 0, internalFormat, w, h, 0,
                 GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, null as ByteBuffer?
             )
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR)
