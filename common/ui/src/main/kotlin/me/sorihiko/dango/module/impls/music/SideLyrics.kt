@@ -18,8 +18,8 @@ import kotlin.math.tanh
 
 /**
  * 驾驶舱歌词：歌词不浮在世界里，而是像座舱 / 头盔显示器一样贴在屏幕一侧。
- * 没有背景板，字自己发光（也可以是透明的玻璃字），颜色跟着"歌词配色"走（自定义 / 封面主色 / 封面渐变 / 彩虹），
- * 踩到节拍时亮一下。
+ * 没有背景板，字自己发光（也可以是透明的玻璃字），默认是封面主色（跟着每首歌变），
+ * 也可以选自定义颜色、封面渐变、彩虹、封面颜色流动的极光；踩到节拍时亮一下。
  * 整列带一点透视倾斜（像座舱侧边的屏，朝屏幕中间转），字略微斜体。
  * 歌词一行行向上滚，当前行放大、逐字点亮；可选惯性：转视角、跳跃时列表稍微滞后再弹回来。
  *
@@ -35,6 +35,12 @@ internal class SideLyrics {
         val inertia: Boolean,
         /** 每句下面显示翻译（跟 3D 歌词的翻译开关走） */
         val translation: Boolean,
+        /** 配色：[COCKPIT_COVER] / [COCKPIT_CUSTOM] / [COCKPIT_GRADIENT] / [COCKPIT_RAINBOW] / [COCKPIT_AURORA] */
+        val colors: Int,
+        /** 选"自定义颜色"时用的颜色（0xRRGGBB） */
+        val color: Int,
+        /** 字本身染上多少颜色（0..1）；0 = 白字配彩色光晕 */
+        val tint: Float,
     )
 
     class Frame(
@@ -45,8 +51,10 @@ internal class SideLyrics {
         /** 当前行；-1 = 第一句之前（显示歌名那一行） */
         val index: Int,
         val positionMs: Long,
-        /** 一行里某个位置的颜色（0 = 行首，1 = 行尾，返回 0xRRGGBB），和 3D 歌词用同一套配色 */
-        val color: (Float) -> Int,
+        /** 封面主色（0xRRGGBB；封面还没出来时传默认色） */
+        val accent: Int,
+        /** 封面的几种代表色（封面渐变、极光用；没有时传空） */
+        val palette: List<Int>,
         /** 0..1，踩点时变大 */
         val beat: Float,
         /** 现在该不该显示（暂停也显示；聊天栏打开时淡出） */
@@ -62,6 +70,10 @@ internal class SideLyrics {
     private var lastKey: String? = null
     private var scroll = Float.NaN
     private var scrollV = 0f
+    /** 封面主色（换歌时慢慢过渡过去） */
+    private var glowR = 0.95f
+    private var glowG = 0.65f
+    private var glowB = 0.76f
 
     /** 截断结果缓存（文字、字号、宽度都不变时不用每帧重新量） */
     private val trimCache = HashMap<String, String>()
@@ -80,7 +92,12 @@ internal class SideLyrics {
 
     /** 这一帧画字用的东西（draw 里设好，各个画行的函数共用） */
     private lateinit var tc: TextCanvas
-    private var colorAt: (Float) -> Int = { 0xFFFFFF }
+    private var colorMode = COCKPIT_COVER
+    private var customR = 1f
+    private var customG = 1f
+    private var customB = 1f
+    private var palette: List<Int> = emptyList()
+    private var timeSec = 0f
     private var italicTan = 0f
     private var alignRight = false
     private val rgb = FloatArray(3)
@@ -93,6 +110,7 @@ internal class SideLyrics {
         // 隔了一阵子才又画（列表隐藏过、游戏卡了）：惯性从头算，不把这段时间里转过的角度当成一下甩过去
         val gap = lastNanos == 0L || now - lastNanos > 250_000_000L
         lastNanos = now
+        timeSec = ((now / 1_000_000L) % 3_600_000L) / 1000f
 
         // 出现 / 消失 0.2 秒渐变；消失时用最后一帧淡出
         if (frame != null) last = frame
@@ -120,6 +138,17 @@ internal class SideLyrics {
             scroll += scrollV * dt
         }
 
+        // 封面主色慢慢过渡（隐藏过一阵子再出现时直接用现在的颜色）；封面很暗时提亮，光才看得出来
+        normalized((f.accent shr 16 and 0xFF) / 255f, (f.accent shr 8 and 0xFF) / 255f, (f.accent and 0xFF) / 255f, rgb)
+        val kc = if (gap) 1f else 1f - exp(-dt / 0.4f)
+        glowR += (rgb[0] - glowR) * kc
+        glowG += (rgb[1] - glowG) * kc
+        glowB += (rgb[2] - glowB) * kc
+        colorMode = s.colors
+        normalized((s.color shr 16 and 0xFF) / 255f, (s.color shr 8 and 0xFF) / 255f, (s.color and 0xFF) / 255f, rgb)
+        customR = rgb[0]; customG = rgb[1]; customB = rgb[2]
+        palette = f.palette
+
         // ---------------------------------------------------------------- 布局（逻辑像素，按窗口缩放）
         val k = min(platform.windowWidth / 1280f, platform.windowHeight / 800f).coerceAtLeast(0.5f)
         val lw = platform.windowWidth / k
@@ -145,7 +174,6 @@ internal class SideLyrics {
         )
         // begin 成功之后一定要走到 end，所以能出错的准备工作都放在 begin 前面
         tc = DangoClient.gfx.text
-        colorAt = f.color
         italicTan = tan(Math.toRadians(ITALIC.toDouble())).toFloat()
         val pulse = 0.8f + 0.25f * f.beat.coerceIn(0f, 1f)
         val style = GlassTextStyle(
@@ -155,7 +183,7 @@ internal class SideLyrics {
             halo = (0.2f + GLOW_STRENGTH) * pulse,
             frost = 0.12f,
             solid = !s.glass,
-            tintText = 0.2f,
+            tintText = s.tint.coerceIn(0f, 1f),
             brightness = 1f,
         )
         val pass = DangoClient.gfx.glassText
@@ -216,15 +244,15 @@ internal class SideLyrics {
                     val shownCount = text.removeSuffix("...").count { !it.isWhitespace() }
                     sung = (sung * shownCount / full).coerceAtMost(shownCount.toFloat())
                 }
-                drawLine(text, area, baseline, size, fade, sung)
+                drawLine(text, area, baseline, size, fade, sung, r)
             } else {
                 // 刚唱完的那行往上滚时慢慢暗下去
                 val lit = otherLit + (0.88f - otherLit) * emph * emph
-                drawLine(text, area, baseline, size, (other + (1f - other) * emph) * fade, null, lit)
+                drawLine(text, area, baseline, size, (other + (1f - other) * emph) * fade, null, r, lit)
             }
             if (tr != null) {
                 drawLine(trim(tr, area.width, translationSize), area, top + size + gap + translationSize * 0.86f, translationSize,
-                    (0.35f + 0.4f * emph) * fade * (0.6f + 0.4f * other), null, 0.22f + 0.2f * emph)
+                    (0.35f + 0.4f * emph) * fade * (0.6f + 0.4f * other), null, r, 0.22f + 0.2f * emph)
             }
         }
     }
@@ -237,19 +265,19 @@ internal class SideLyrics {
         val hasArtist = f.artist.isNotBlank()
         val top = cy - (if (hasArtist) titleSize + gap + artistSize else titleSize) / 2f
         val title = trim("♪ " + f.title, area.width, titleSize)
-        drawLine(title, area, top + titleSize * 0.86f, titleSize, (other + (1f - other) * emph) * fade, null, 0.45f + 0.4f * emph)
+        drawLine(title, area, top + titleSize * 0.86f, titleSize, (other + (1f - other) * emph) * fade, null, 0, 0.45f + 0.4f * emph)
         if (hasArtist) {
             drawLine(trim(f.artist, area.width, artistSize), area, top + titleSize + gap + artistSize * 0.86f,
-                artistSize, (0.4f + 0.3f * emph) * fade, null, 0.3f)
+                artistSize, (0.4f + 0.3f * emph) * fade, null, 0, 0.3f)
         }
     }
 
     /**
-     * 画一行字（左对齐 / 右侧时右对齐），逐字上色。
+     * 画一行字（左对齐 / 右侧时右对齐），逐字上色；[row] 是第几行（彩虹、极光每行错开一点）。
      * [sung] 不为 null = 当前行逐字点亮：唱过的字最亮，正在唱的那个字按进度变亮，没唱到的偏暗；
      * 否则整行都是 [lit] 的亮度
      */
-    private fun drawLine(text: String, area: LayoutBounds, baseline: Float, size: Float, alpha: Float, sung: Float?, lit: Float = 1f) {
+    private fun drawLine(text: String, area: LayoutBounds, baseline: Float, size: Float, alpha: Float, sung: Float?, row: Int, lit: Float = 1f) {
         if (text.isEmpty() || alpha <= 0.005f) return
         val width = tc.smoothWidth(text, size, FONT)
         val x0 = if (alignRight) area.right - width else area.x
@@ -279,7 +307,7 @@ internal class SideLyrics {
                             else -> { l = dim; a = alpha * 0.85f }
                         }
                     }
-                    setColor((pen + cw / 2f) / width.coerceAtLeast(1f))
+                    setColor((pen + cw / 2f) / width.coerceAtLeast(1f), row)
                     ink(ch, pen, size, l, a)
                     counted++
                 }
@@ -302,10 +330,63 @@ internal class SideLyrics {
         tc.smoothText(text, x, 0f, size, FONT)
     }
 
-    /** 取一行里 [u]（0..1）处的颜色写进 [rgb]；很暗的颜色当成白色，光才看得出来 */
-    private fun setColor(u: Float) {
-        val c = colorAt(u.coerceIn(0f, 1f))
-        normalized((c shr 16 and 0xFF) / 255f, (c shr 8 and 0xFF) / 255f, (c and 0xFF) / 255f, rgb)
+    /** 第 [row] 行里 [u]（0 = 行首，1 = 行尾）处那个字的颜色写进 [rgb]（最亮的通道调成 1） */
+    private fun setColor(u: Float, row: Int) {
+        when (colorMode) {
+            COCKPIT_CUSTOM -> { rgb[0] = customR; rgb[1] = customG; rgb[2] = customB }
+            COCKPIT_GRADIENT -> if (palette.size >= 2) paletteAt(u.coerceIn(0f, 1f) * (palette.size - 1), false) else accent()
+            COCKPIT_RAINBOW -> hsv(frac(u * 0.55f + row * 0.06f + timeSec * 0.12f), 0.72f)
+            COCKPIT_AURORA -> if (palette.size >= 2) {
+                paletteAt(frac(u * 0.6f - timeSec * 0.08f + row * 0.05f) * palette.size, true)
+            } else {
+                // 只有一种封面色：在它和旁边的色相之间来回流动
+                accent()
+                val t = (kotlin.math.sin((u * 3f - timeSec * 0.9f + row * 0.4f).toDouble()).toFloat() + 1f) / 2f
+                val r0 = rgb[0]; val g0 = rgb[1]; val b0 = rgb[2]
+                rgb[0] = r0 + (b0 - r0) * t * 0.6f
+                rgb[1] = g0 + (r0 - g0) * t * 0.6f
+                rgb[2] = b0 + (g0 - b0) * t * 0.6f
+                normalized(rgb[0], rgb[1], rgb[2], rgb)
+            }
+            else -> accent()
+        }
+    }
+
+    private fun accent() {
+        rgb[0] = glowR; rgb[1] = glowG; rgb[2] = glowB
+    }
+
+    /** 封面色板上第 [at] 个位置（小数在相邻两个颜色之间插值）；[wrap] = 最后一个接回第一个 */
+    private fun paletteAt(at: Float, wrap: Boolean) {
+        val n = palette.size
+        val i = floor(at).toInt()
+        val t = at - i
+        val a = palette[((i % n) + n) % n]
+        val b = palette[if (wrap) (((i + 1) % n) + n) % n else (i + 1).coerceIn(0, n - 1)]
+        normalized(
+            mix((a shr 16 and 0xFF) / 255f, (b shr 16 and 0xFF) / 255f, t),
+            mix((a shr 8 and 0xFF) / 255f, (b shr 8 and 0xFF) / 255f, t),
+            mix((a and 0xFF) / 255f, (b and 0xFF) / 255f, t),
+            rgb,
+        )
+    }
+
+    /** 色相 [h]（0..1）、饱和度 [s] 的亮色写进 [rgb] */
+    private fun hsv(h: Float, s: Float) {
+        val hh = frac(h) * 6f
+        val i = hh.toInt()
+        val f = hh - i
+        val p = 1f - s
+        val q = 1f - s * f
+        val t = 1f - s * (1f - f)
+        when (i) {
+            0 -> { rgb[0] = 1f; rgb[1] = t; rgb[2] = p }
+            1 -> { rgb[0] = q; rgb[1] = 1f; rgb[2] = p }
+            2 -> { rgb[0] = p; rgb[1] = 1f; rgb[2] = t }
+            3 -> { rgb[0] = p; rgb[1] = q; rgb[2] = 1f }
+            4 -> { rgb[0] = t; rgb[1] = p; rgb[2] = 1f }
+            else -> { rgb[0] = 1f; rgb[1] = p; rgb[2] = q }
+        }
     }
 
     /** 引导线：外侧一条两头淡出的细线，当前行的位置有一个亮刻度（跟着滚动走） */
@@ -315,7 +396,7 @@ internal class SideLyrics {
         val halfH = area.height / 2f
         val a = appear
         val line = 0.35f
-        setColor(0.5f)
+        setColor(0.5f, f.index + 1)
         pass.bar(gx - lw / 2f, area.y, lw, halfH, rgb[0] * line, rgb[1] * line, rgb[2] * line, 0f, 0.5f * a)
         pass.bar(gx - lw / 2f, center, lw, halfH, rgb[0] * line, rgb[1] * line, rgb[2] * line, 0.5f * a, 0f)
         val cy = center + ((f.index + 1).toFloat() - scroll) * rowH
@@ -427,6 +508,9 @@ internal class SideLyrics {
         const val SWAY_K = 227f
         const val SWAY_C = 16.6f
 
+        fun frac(x: Float): Float = x - floor(x)
+        fun mix(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+
         /** 调成最亮的通道是 1（很暗 / 黑色当白色）：遮罩里要靠这个分出颜色和亮度 */
         fun normalized(r: Float, g: Float, b: Float, out: FloatArray) {
             val peak = maxOf(r, g, b)
@@ -465,3 +549,10 @@ internal class SideLyrics {
         }
     }
 }
+
+/** 驾驶舱配色（顺序和设置页的选项一致） */
+internal const val COCKPIT_COVER = 0
+internal const val COCKPIT_CUSTOM = 1
+internal const val COCKPIT_GRADIENT = 2
+internal const val COCKPIT_RAINBOW = 3
+internal const val COCKPIT_AURORA = 4

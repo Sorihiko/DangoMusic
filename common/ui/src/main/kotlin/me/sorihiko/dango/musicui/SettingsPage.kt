@@ -49,12 +49,13 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
     private val choiceLabels = mapOf(
         "lyricColors" to listOf("Custom color", "Cover color", "Cover gradient", "Rainbow"),
         "cockpitSide" to listOf("Left", "Right"),
+        "cockpitColors" to listOf("Cover color", "Custom color", "Cover gradient", "Rainbow", "Aurora"),
         "audioOutput" to listOf("Auto", "Java Sound", "Game audio (OpenAL)"),
         "audioQuality" to listOf("Standard quality", "High quality", "Lossless quality"),
     )
 
     /** 显示成百分比的选项 */
-    private val percentKeys = setOf("volume", "glowRadius", "posX", "posY")
+    private val percentKeys = setOf("volume", "glowRadius", "posX", "posY", "cockpitTint")
 
     private val tabs: List<List<Group>> by lazy { buildSettings() }
 
@@ -240,11 +241,13 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
                 "danceAuto" to "dance", "danceTap" to "dance", "danceSpin" to "dance", "danceAmount" to "dance", "danceOffset" to "dance",
                 "danceSpinSpeed" to "danceSpin",
                 "translationColor" to "translation", "translationAnimation" to "translation", "translationWiggle" to "translation",
-                "cockpitSide" to "cockpit", "cockpitGlass" to "cockpit", "cockpitInertia" to "cockpit",
+                "cockpitSide" to "cockpit", "cockpitColors" to "cockpit", "cockpitColor" to "cockpit", "cockpitTint" to "cockpit",
+                "cockpitGlass" to "cockpit", "cockpitInertia" to "cockpit",
             ),
             fmts = mapOf(
                 "spread" to { v: Any -> "${(v as FloatValue).value.roundToInt()}°" },
                 "glowRadius" to ::percent,
+                "cockpitTint" to ::percent,
                 "danceOffset" to { v: Any -> "${(v as IntValue).value} ms" },
                 "danceSpinSpeed" to { v: Any -> "%.2f×".format((v as FloatValue).value) },
             ),
@@ -254,7 +257,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
             Group("Appearance", "Font and colors", ly.m, false, ly.take(listOf("worldMode", "scale", "lyricFont", "lyricColors", "textColor", "rainbowSpeed", "splitLines"))),
             Group("Position", "Where the lyrics float", ly.m, false, ly.take(listOf("distance", "facePlayer", "keepAway", "stayOnScreen", "aboveGround", "spread"))),
             Group("Translation", "Under each line", ly.m, false, ly.take(listOf("translation", "translationColor", "translationAnimation", "translationWiggle"))),
-            Group("Cockpit lyrics", "Along the side of the screen", ly.m, false, ly.take(listOf("cockpit", "cockpitSide", "cockpitGlass", "cockpitInertia"))),
+            Group("Cockpit lyrics", "Along the side of the screen", ly.m, false, ly.take(listOf("cockpit", "cockpitSide", "cockpitColors", "cockpitColor", "cockpitTint", "cockpitGlass", "cockpitInertia"))),
             Group("Glow", "Deep Glow", ly.m, false, ly.take(listOf("glow", "glowNightOnly", "glowStrength", "glowRadius"))),
             Group("Motion", "Animation", ly.m, false, ly.take(listOf("wiggle", "wiggleFps", "wiggleAmount", "textFlash", "wordPop", "flashSize"))),
             Group("Dance", "Mobs on the beat", ly.m, false, ly.take(listOf("dance", "danceAuto", "danceTap", "danceSpin", "danceSpinSpeed", "danceAmount", "danceOffset"))),
