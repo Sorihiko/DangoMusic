@@ -304,11 +304,18 @@ Color of the translation	翻译的文字颜色
 Under each line	原文下方
 Cockpit lyrics	驾驶舱歌词
 Along the side of the screen	贴在屏幕一侧
-Lyrics also sit along the side of the screen like a cockpit display, glowing in the lyric colors	歌词同时像驾驶舱显示屏一样贴在屏幕一侧，按歌词配色发光
+Lyrics also sit along the side of the screen like a cockpit display, glowing in the cover color	歌词同时像驾驶舱显示屏一样贴在屏幕一侧，按封面主色发光
 Cockpit side	驾驶舱位置
 Which side of the screen the cockpit lyrics sit on	驾驶舱歌词放在屏幕哪一侧
 Left	左侧
 Right	右侧
+Cockpit colors	驾驶舱配色
+Cover color follows each song; or use your own color, a cover gradient, a rainbow, or a flowing aurora of the cover colors	封面主色会跟着每首歌变；也可以用自己选的颜色、封面渐变、彩虹，或者封面颜色流动的极光
+Aurora	极光
+Cockpit color	驾驶舱颜色
+Used when Cockpit colors is set to Custom color	驾驶舱配色选“自定义颜色”时用
+Color in letters	文字染色
+How much of the color goes into the letters themselves; 0 keeps white letters with a colored glow	字本身染上多少颜色；0 是白字配彩色光晕
 Glass text	玻璃字
 Cockpit lyrics are see-through glass that bends what is behind them	驾驶舱歌词的字是透明玻璃，折射后面的画面
 Inertia	惯性

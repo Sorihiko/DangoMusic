@@ -70,11 +70,20 @@ class LyricsModule : Module() {
     /** 快捷键"开关歌词"用 */
     fun toggleLyrics() = worldMode.toggle()
 
-    @ModuleValue("Cockpit lyrics", "Lyrics also sit along the side of the screen like a cockpit display, glowing in the lyric colors")
+    @ModuleValue("Cockpit lyrics", "Lyrics also sit along the side of the screen like a cockpit display, glowing in the cover color")
     private val cockpit = BooleanValue(false)
 
     @ModuleValue("Cockpit side", "Which side of the screen the cockpit lyrics sit on")
     private val cockpitSide = IntValue(0, 1, 1)
+
+    @ModuleValue("Cockpit colors", "Cover color follows each song; or use your own color, a cover gradient, a rainbow, or a flowing aurora of the cover colors")
+    private val cockpitColors = IntValue(COCKPIT_COVER, COCKPIT_AURORA, COCKPIT_COVER)
+
+    @ModuleValue("Cockpit color", "Used when Cockpit colors is set to Custom color")
+    private val cockpitColor = ColorValue(0x8EC5FF)
+
+    @ModuleValue("Color in letters", "How much of the color goes into the letters themselves; 0 keeps white letters with a colored glow")
+    private val cockpitTint = FloatValue(0f, 1f, 0.2f, 2)
 
     @ModuleValue("Glass text", "Cockpit lyrics are see-through glass that bends what is behind them")
     private val cockpitGlass = BooleanValue(false)
@@ -359,8 +368,8 @@ class LyricsModule : Module() {
         DangoClient.gfx.text.lyricFont(if (smoothFont.get()) LyricFonts.file(lyricFont.value) else null)
         updateClock()
         val s = current
-        // 小柱子的颜色取自封面，所以只开 Now playing 也要加载封面
-        if (s != null && (showCover.get() || nowPlaying.get() || lyricColors.value == COLORS_COVER || lyricColors.value == COLORS_GRADIENT)) {
+        // 小柱子的颜色取自封面，所以只开 Now playing 也要加载封面；驾驶舱歌词的配色也取自封面
+        if (s != null && (showCover.get() || nowPlaying.get() || cockpit.get() || lyricColors.value == COLORS_COVER || lyricColors.value == COLORS_GRADIENT)) {
             s.track.coverUrl.takeIf { it.isNotEmpty() }?.let { cover.requestUrl(s.key, it) }
         }
         cover.upload()
@@ -453,6 +462,7 @@ class LyricsModule : Module() {
         val frame = s?.let {
             val lyrics = currentKey?.let { key -> lyricsFor(key) }
             val pos = songPos.toLong()
+            val shown = cover.shownKey == it.key
             SideLyrics.Frame(
                 key = it.key,
                 title = it.title,
@@ -460,8 +470,8 @@ class LyricsModule : Module() {
                 lines = lyrics?.lines.orEmpty(),
                 index = lyrics?.indexAt(pos) ?: -1,
                 positionMs = pos,
-                // 和 3D 歌词同一套配色：自定义颜色 / 封面主色 / 封面渐变 / 彩虹
-                color = { u -> charRgb(u, 1f, textRgb) },
+                accent = if (shown) cover.accent else CoverArt.DEFAULT_ACCENT,
+                palette = if (shown) cover.palette else emptyList(),
                 beat = if (!MusicPlayer.external) MusicPlayer.beatPulse(MusicPlayer.shownPositionMs) else 0f,
                 visible = cockpit.get() && !DangoClient.platform.chatOpen,
             )
@@ -471,6 +481,9 @@ class LyricsModule : Module() {
             glass = cockpitGlass.get(),
             inertia = cockpitInertia.get(),
             translation = translation.get(),
+            colors = cockpitColors.value,
+            color = cockpitColor.value,
+            tint = cockpitTint.value,
         ))
     }
 
