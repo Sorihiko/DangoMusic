@@ -288,7 +288,7 @@ internal class TracksPage(private val screen: MusicScreen) {
         val p = state.opened
         if (state.page == Page.PLAYLIST && p != null) {
             val cv = LayoutBounds(x, y, 96f, 96f)
-            ui.drawCover(cv, CoverCache.playlistRounded(p, 0.1f), 12f)
+            ui.drawCover(cv, CoverCache.playlistRoundedLarge(p, 0.1f), 12f)
             x = cv.right + 18f
             headerH = 112f
         }
@@ -597,7 +597,10 @@ internal class TracksPage(private val screen: MusicScreen) {
             val a = (1f - min(ad, 4f) * 0.2f).coerceAtLeast(0.15f) * edgeFade(item.b)
             if (a < 0.01f) continue
             ui.ctx.pushOpacity(a)
-            ui.drawCover(item.b, CoverCache.trackRounded(tracks[item.i], 0.08f), 12f)
+            // 中间几张很大，用高清版；两边远处的缩得很小，小图就够
+            val cover = if (ad < 2.5f) CoverCache.trackRoundedLarge(tracks[item.i], 0.08f)
+                else CoverCache.trackRounded(tracks[item.i], 0.08f)
+            ui.drawCover(item.b, cover, 12f)
             if (ad > 0.5f) ui.card(item.b, Color(0f, 0f, 0f, min(0.45f, ad * 0.18f)), 2f)
             ui.ctx.popOpacity()
         }
