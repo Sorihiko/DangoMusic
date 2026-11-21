@@ -158,6 +158,9 @@ class LyricsModule : Module() {
     @ModuleValue("Spin", "Creatures also spin around steadily")
     private val danceSpin = BooleanValue(false)
 
+    @ModuleValue("Spin speed", "How fast creatures spin: 1× is one turn every four beats")
+    private val danceSpinSpeed = FloatValue(0.25f, 4f, 1f, 2)
+
     @ModuleValue("Bounce amount", "How much creatures squash and stretch")
     private val danceAmount = FloatValue(0.2f, 2f, 1.3f, 1)
 
@@ -333,6 +336,7 @@ class LyricsModule : Module() {
         // 生物跟着节奏摇：每帧把设置同步过去，各版本画生物时读
         Dance.enabled = enabled && dance.get()
         Dance.spin = danceSpin.get()
+        Dance.spinSpeed = danceSpinSpeed.value
         Dance.amount = danceAmount.value
         Dance.offsetMs = danceOffset.value
         Dance.auto = danceAuto.get()

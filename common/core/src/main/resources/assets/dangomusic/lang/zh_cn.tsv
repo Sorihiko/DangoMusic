@@ -308,6 +308,8 @@ Mob dance	生物跟着节奏弹
 Every creature in the world squashes and stretches on the beat of the song	世界里所有生物踩着歌曲的节拍压扁再拉长
 Spin	转圈
 Creatures also spin around steadily	生物同时匀速转圈
+Spin speed	转圈速度
+How fast creatures spin: 1× is one turn every four beats	转圈有多快：1× 是四拍转一圈
 Dance amount	摇的幅度
 How much creatures squash and stretch	压扁拉长得多厉害
 Beat offset	踩点偏移

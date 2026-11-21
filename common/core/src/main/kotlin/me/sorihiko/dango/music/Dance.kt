@@ -26,6 +26,8 @@ object Dance {
     @Volatile var enabled = false
     @Volatile var spin = false
     @Volatile var amount = 1f
+    /** 转圈速度倍数：1 = 四拍转一圈，2 = 两拍一圈，0.5 = 八拍一圈 */
+    @Volatile var spinSpeed = 1f
     /** 踩点偏移（ms，正 = 往后推），各人声卡延迟不一样，用来对准 */
     @Volatile var offsetMs = 0
     /** 自动从鼓点估 BPM */
@@ -250,7 +252,7 @@ object Dance {
         val phase = (beats - floor(beats)).toFloat()                  // 0..1：这一拍走到哪
         val squash = 1f + BOUNCE_DEPTH * amount * envelope * bounce(phase)
         // 转圈：匀速转，四拍一圈
-        if (spin) spinAngle = (spinAngle + dt * 1000.0 / periodMs * 90.0 * envelope) % 360.0
+        if (spin) spinAngle = (spinAngle + dt * 1000.0 / periodMs * 90.0 * spinSpeed.coerceIn(0.1f, 8f) * envelope) % 360.0
         else spinAngle = 0.0
         return floatArrayOf(spinAngle.toFloat(), squash)
     }
