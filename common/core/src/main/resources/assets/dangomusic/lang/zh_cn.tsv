@@ -302,6 +302,17 @@ Color of the 3D lyrics	3D 歌词的文字颜色
 Translation color	翻译颜色
 Color of the translation	翻译的文字颜色
 Under each line	原文下方
+Cockpit lyrics	驾驶舱歌词
+Along the side of the screen	贴在屏幕一侧
+Lyrics also sit along the side of the screen like a cockpit display, glowing in the lyric colors	歌词同时像驾驶舱显示屏一样贴在屏幕一侧，按歌词配色发光
+Cockpit side	驾驶舱位置
+Which side of the screen the cockpit lyrics sit on	驾驶舱歌词放在屏幕哪一侧
+Left	左侧
+Right	右侧
+Glass text	玻璃字
+Cockpit lyrics are see-through glass that bends what is behind them	驾驶舱歌词的字是透明玻璃，折射后面的画面
+Inertia	惯性
+Cockpit lyrics lag a little when you turn or jump, then spring back	转视角或跳跃时，驾驶舱歌词稍微滞后再弹回来
 Dance	跳舞
 Mobs on the beat	生物跟着节奏
 Mob dance	生物跟着节奏弹

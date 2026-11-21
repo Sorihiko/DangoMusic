@@ -3,6 +3,7 @@ package me.sorihiko.dango.legacy
 import me.sorihiko.dango.font.CjkFont
 import me.sorihiko.dango.gfx.CjkRun
 import me.sorihiko.dango.gfx.Gfx
+import me.sorihiko.dango.gfx.GlassTextPass
 import me.sorihiko.dango.gfx.GlowPass
 import me.sorihiko.dango.gfx.GuiCanvas
 import me.sorihiko.dango.gfx.HudCanvas
@@ -11,6 +12,7 @@ import me.sorihiko.dango.gfx.Texture
 import me.sorihiko.dango.gfx.Textures
 import me.sorihiko.dango.gfx.WorldView
 import me.sorihiko.dango.lyrics.DeepGlow
+import me.sorihiko.dango.lyrics.GlassText
 import me.sorihiko.dango.ui.GlassRenderContext
 import me.sorihiko.dango.utils.render.GlCaps
 import me.sorihiko.dango.utils.render.GlStateSnapshot
@@ -113,6 +115,7 @@ object LegacyGfx : Gfx {
     override val world: WorldView = LegacyWorld
     override val glow: GlowPass = DeepGlow()
     override val hud: HudCanvas = LegacyHud
+    override val glassText: GlassTextPass = GlassText()
 
     /** 直接用 GL 绑过贴图 / 设过颜色之后，同步回 MC 的状态缓存，免得后面 MC 字体画错 */
     internal fun resetColorAndTexture() {
@@ -144,6 +147,19 @@ object LegacyText : TextCanvas {
     override fun translate(x: Float, y: Float) = GL11.glTranslatef(x, y, 0f)
     override fun rotate(degrees: Float) = GL11.glRotatef(degrees, 0f, 0f, 1f)
     override fun scale(x: Float, y: Float) = GL11.glScalef(x, y, 1f)
+
+    private val shear = org.lwjgl.BufferUtils.createFloatBuffer(16)
+
+    override fun skewX(t: Float) {
+        // 列优先：第二列 (-t, 1, 0, 0) → x' = x - t·y
+        shear.clear()
+        shear.put(1f).put(0f).put(0f).put(0f)
+        shear.put(-t).put(1f).put(0f).put(0f)
+        shear.put(0f).put(0f).put(1f).put(0f)
+        shear.put(0f).put(0f).put(0f).put(1f)
+        shear.flip()
+        GL11.glMultMatrix(shear)
+    }
 
     override fun color(r: Float, g: Float, b: Float, a: Float) = GL11.glColor4f(r, g, b, a)
 

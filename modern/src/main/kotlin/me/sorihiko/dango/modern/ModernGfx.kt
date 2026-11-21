@@ -3,6 +3,7 @@ package me.sorihiko.dango.modern
 import me.sorihiko.dango.font.CjkFont
 import me.sorihiko.dango.gfx.CjkRun
 import me.sorihiko.dango.gfx.Gfx
+import me.sorihiko.dango.gfx.GlassTextPass
 import me.sorihiko.dango.gfx.GlowPass
 import me.sorihiko.dango.gfx.GuiCanvas
 import me.sorihiko.dango.gfx.HudCanvas
@@ -11,6 +12,7 @@ import me.sorihiko.dango.gfx.Texture
 import me.sorihiko.dango.gfx.Textures
 import me.sorihiko.dango.gfx.WorldView
 import me.sorihiko.dango.lyrics.DeepGlow
+import me.sorihiko.dango.lyrics.GlassText
 import me.sorihiko.dango.ui.GlassRenderContext
 
 import net.minecraft.client.Minecraft
@@ -91,6 +93,7 @@ object ModernGfx : Gfx {
     override val world: WorldView = ModernWorld
     override val glow: GlowPass = DeepGlow()
     override val hud: HudCanvas = ModernHud
+    override val glassText: GlassTextPass = GlassText()
 
     /** 画文字用的状态：透明混合、不测深度、不剔除背面（和 1.8.9 一样） */
     internal fun textState() {
@@ -176,6 +179,10 @@ object ModernText : TextCanvas {
     }
     override fun scale(x: Float, y: Float) {
         Fixed.pose.scale(x, y, 1f)
+    }
+    override fun skewX(t: Float) {
+        // 第二列的 x 分量：x' = x - t·y
+        Fixed.pose.mul(Matrix4f().m10(-t))
     }
 
     override fun color(r: Float, g: Float, b: Float, a: Float) = Fixed.color(r, g, b, a)

@@ -38,6 +38,8 @@ class GlassBackdrop {
 
     val softTexture: Int get() = softA.texture
     val frostTexture: Int get() = frostA.texture
+    /** 原分辨率、不模糊的那张（玻璃字的清透折射用） */
+    val sharpTexture: Int get() = captureTexture
 
     var ready = false
         private set

@@ -48,6 +48,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
     /** 用 ◀ ▶ 切换的选项：设置名 → 每个值的显示名（从最小值开始） */
     private val choiceLabels = mapOf(
         "lyricColors" to listOf("Custom color", "Cover color", "Cover gradient", "Rainbow"),
+        "cockpitSide" to listOf("Left", "Right"),
         "audioOutput" to listOf("Auto", "Java Sound", "Game audio (OpenAL)"),
         "audioQuality" to listOf("Standard quality", "High quality", "Lossless quality"),
     )
@@ -239,6 +240,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
                 "danceAuto" to "dance", "danceTap" to "dance", "danceSpin" to "dance", "danceAmount" to "dance", "danceOffset" to "dance",
                 "danceSpinSpeed" to "danceSpin",
                 "translationColor" to "translation", "translationAnimation" to "translation", "translationWiggle" to "translation",
+                "cockpitSide" to "cockpit", "cockpitGlass" to "cockpit", "cockpitInertia" to "cockpit",
             ),
             fmts = mapOf(
                 "spread" to { v: Any -> "${(v as FloatValue).value.roundToInt()}°" },
@@ -252,6 +254,7 @@ internal class SettingsPage(private val screen: MusicScreen, private val module:
             Group("Appearance", "Font and colors", ly.m, false, ly.take(listOf("worldMode", "scale", "lyricFont", "lyricColors", "textColor", "rainbowSpeed", "splitLines"))),
             Group("Position", "Where the lyrics float", ly.m, false, ly.take(listOf("distance", "facePlayer", "keepAway", "stayOnScreen", "aboveGround", "spread"))),
             Group("Translation", "Under each line", ly.m, false, ly.take(listOf("translation", "translationColor", "translationAnimation", "translationWiggle"))),
+            Group("Cockpit lyrics", "Along the side of the screen", ly.m, false, ly.take(listOf("cockpit", "cockpitSide", "cockpitGlass", "cockpitInertia"))),
             Group("Glow", "Deep Glow", ly.m, false, ly.take(listOf("glow", "glowNightOnly", "glowStrength", "glowRadius"))),
             Group("Motion", "Animation", ly.m, false, ly.take(listOf("wiggle", "wiggleFps", "wiggleAmount", "textFlash", "wordPop", "flashSize"))),
             Group("Dance", "Mobs on the beat", ly.m, false, ly.take(listOf("dance", "danceAuto", "danceTap", "danceSpin", "danceSpinSpeed", "danceAmount", "danceOffset"))),
